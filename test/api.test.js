@@ -316,7 +316,7 @@ test("guards: cross-site writes, bad bodies, escaping, and nothing secret in the
   assert.equal(page.status, 200);
   assert.match(page.headers.get("content-security-policy"), /script-src 'self'/);
   assert.equal((await fetch(`${app.base}/server/config.js`)).status, 404, "server code is not served");
-  assert.match(await (await fetch(`${app.base}/no-such-page`)).text(), /Nothing here/);
+  assert.match(await (await fetch(`${app.base}/no-such-page`)).text(), /This round is a dead end/);
   assert.equal((await fetch(`${app.base}/.env`)).status, 404);
   await admin("POST", `/api/host/games/${pin}/end`);
 });

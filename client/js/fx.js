@@ -109,6 +109,7 @@ function play(notes, type = "sine", gain = 0.12) {
 
 export function buzz(pattern) {
   try {
+    if (reducedMotion() || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return;
     navigator.vibrate?.(pattern);
   } catch {
     // not a phone, or not allowed

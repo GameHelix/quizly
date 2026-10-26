@@ -1,0 +1,32 @@
+{
+  "name": "quizly",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live, presenter-paced quiz: a host screen, phones that join by QR code or PIN, live leaderboards. Express on Vercel, Postgres on Neon.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --watch server/index.js",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local server/index.js",
+    "build": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/build.js",
+    "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.js",
+    "db:seed": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "load-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/load-test.js",
+    "abuse-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/abuse-test.js"
+  },
+  "dependencies": {
+    "@vercel/functions": "3.10.3",
+    "express": "5.3.0",
+    "pg": "8.23.1",
+    "qrcode": "1.5.4"
+  },
+  "overrides": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@neon/config": "1.9.4"
+  }
+}

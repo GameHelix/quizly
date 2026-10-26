@@ -7,7 +7,7 @@
 import { confetti } from "./fx.js";
 import { renderBoard } from "./leaderboard.js";
 import { getState, poll } from "./live.js";
-import { $, escapeHtml, plural } from "./ui.js";
+import { $, escapeHtml, fitToScreen, keepFitting, plural } from "./ui.js";
 
 const app = $("app");
 let poller = null;
@@ -15,6 +15,7 @@ let drawn = "";
 let boardJson = "";
 let celebrated = false;
 
+keepFitting();
 open();
 window.addEventListener("hashchange", open);
 
@@ -71,7 +72,7 @@ function show(game) {
   if (game.phase === "lobby") {
     const url = new URL(game.joinUrl);
     draw("lobby", () => `
-      <div class="stage">
+      <div class="stage ambient">
         ${head}
         <div class="lobby">
           <section class="joincard">
@@ -92,6 +93,7 @@ function show(game) {
         chip.textContent = `${p.avatar} ${p.nickname}`;
         return chip;
       }));
+      fitToScreen();
     }
   } else {
     draw("board", () => `
@@ -107,6 +109,7 @@ function show(game) {
     if (json !== boardJson) {
       boardJson = json;
       renderBoard($("board"), rows);
+      fitToScreen();
     }
     $("empty").textContent = rows.length ? "" : "The standings appear after the first question.";
     if (game.phase === "final" && !celebrated) {
@@ -130,4 +133,5 @@ function draw(fingerprint, html) {
   if (fingerprint === drawn) return;
   drawn = fingerprint;
   app.innerHTML = html();
+  fitToScreen();
 }

@@ -125,6 +125,33 @@ export async function keepAwake() {
   await grab();
 }
 
+/* Lowers a presenter screen's --k (see styles.css) until the page fits the
+ * window without scrolling: a projector cannot scroll, and a long question on
+ * a 720p screen would otherwise push its answers off the bottom. Narrow
+ * windows — someone's phone — are left to scroll as usual. */
+export function fitToScreen() {
+  const stage = document.querySelector(".stage");
+  if (!stage) return;
+  let k = 1;
+  stage.style.setProperty("--k", k);
+  if (innerWidth < 700) return;
+  const root = document.documentElement;
+  while (k > 0.5 && root.scrollHeight > innerHeight + 1) {
+    k = Math.round((k - 0.05) * 100) / 100;
+    stage.style.setProperty("--k", k);
+  }
+}
+
+/* Fits again whenever the window changes size or the web fonts arrive. */
+export function keepFitting() {
+  let timer = null;
+  addEventListener("resize", () => {
+    clearTimeout(timer);
+    timer = setTimeout(fitToScreen, 120);
+  });
+  document.fonts?.ready.then(fitToScreen);
+}
+
 /* The red "reconnecting" strip, shown while requests are failing. */
 export function netStatus(ok) {
   let bar = $("net");

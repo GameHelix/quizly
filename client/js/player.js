@@ -9,7 +9,7 @@
  */
 
 import { AVATARS, LETTERS, NICKNAME_MAX } from "/shared/quiz.js";
-import { buzz, confetti } from "./fx.js";
+import { buzz, confetti, countUp } from "./fx.js";
 import { moveHtml } from "./leaderboard.js";
 import { clock, getState, poll } from "./live.js";
 import { $, api, escapeHtml, fmt, keepAwake, ordinal, plural, toast } from "./ui.js";
@@ -42,6 +42,7 @@ else renderJoin();
 function renderJoin(message = "") {
   stop();
   drawn = "";
+  document.body.dataset.mood = "";
   const last = readStore(LAST_KEY) || {};
   let avatar = AVATARS.includes(last.avatar) ? last.avatar : AVATARS[Math.floor(Math.random() * AVATARS.length)];
   const fixedPin = /^\d{6}$/.test(linkPin) ? linkPin : "";
@@ -170,21 +171,26 @@ function render() {
   }
 }
 
-/* Draws html() unless the same fingerprint is already on screen. */
-function draw(fingerprint, html, after) {
+/* Draws html() unless the same fingerprint is already on screen. mood tints
+ * the whole page: "good" or "bad" at a reveal, nothing otherwise. */
+function draw(fingerprint, html, after, mood = "") {
   if (fingerprint !== drawn) {
     drawn = fingerprint;
     clearInterval(ticker);
+    document.body.dataset.mood = mood;
     app.innerHTML = html();
     after?.();
   }
 }
 
-function header(score) {
-  const streak = me?.me?.streak >= 2 ? `<span class="pill fire">🔥 ${me.me.streak}</span>` : "";
+/* The question count, the run so far as a trail of dots, the streak and the score. */
+function header(score, mine) {
+  const streak = mine?.me?.streak >= 2 ? `<span class="pill fire">🔥 ${mine.me.streak}</span>` : "";
+  const dots = (mine?.history ?? []).map(h => `<i class="${h === true ? "ok" : h === false ? "no" : ""}"></i>`).join("") +
+    (game.phase === "question" ? `<i class="now"></i>` : "");
   return `
     <div class="row">
-      <span class="pill">${game.index + 1} / ${game.total}</span>
+      <span class="bar"><span class="pill">${game.index + 1} / ${game.total}</span><span class="trail" aria-hidden="true">${dots}</span></span>
       <span class="bar">${streak}<span class="pill on">${fmt(score)} pts</span></span>
     </div>`;
 }
@@ -204,12 +210,15 @@ function renderLobby() {
 function renderQuestion(mine) {
   const q = game.question;
   const choice = mine?.choice ?? pending;
-  draw(`q:${game.index}:${choice}`, () => `
-    ${header(lastScore)}
-    <h2 style="margin-top:18px">${escapeHtml(q.prompt)}</h2>
+  const size = q.prompt.length > 200 ? "q-l" : q.prompt.length > 110 ? "q-m" : "";
+  const compact = Math.max(...q.options.map(o => o.length)) > 70 ? " compact" : "";
+  draw(`q:${game.index}:${choice}:${mine ? 1 : 0}`, () => `
+    ${header(lastScore, mine)}
+    <h2 class="${size}" style="margin-top:18px">${escapeHtml(q.prompt)}</h2>
     <div class="timer" id="timer"><span id="bar"></span></div>
     <p class="note" id="left">&nbsp;</p>
-    <div class="opts">
+    <div class="ready" id="ready" aria-live="polite"></div>
+    <div class="opts${compact}">
       ${q.options.map((o, i) => `
         <button class="opt c${i}${choice === i ? " picked" : ""}" data-i="${i}" disabled>
           <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}</span>
@@ -234,9 +243,23 @@ function tickQuestion() {
   app.querySelectorAll("button.opt").forEach(b => { b.disabled = !open; });
   const bar = $("bar");
   const left = $("left");
+  const ready = $("ready");
+  if (opensIn > 0) {
+    // 3, 2, 1 in big type while the options wait, then "Go!"
+    const n = String(Math.ceil(opensIn / 1000));
+    if (ready.textContent !== n) {
+      ready.textContent = n;
+      replay(ready, "go");
+    }
+  } else if (/^\d$/.test(ready.textContent)) {
+    ready.textContent = "Go!";
+    replay(ready, "go");
+    buzz(25);
+    setTimeout(() => { if (ready.isConnected) ready.textContent = ""; }, 700);
+  }
   if (opensIn > 0) {
     bar.style.width = "100%";
-    left.textContent = `Get ready… ${Math.ceil(opensIn / 1000)}`;
+    left.textContent = "Get ready";
   } else if (remaining > 0) {
     bar.style.width = `${((remaining / q.limitMs) * 100).toFixed(1)}%`;
     $("timer").classList.toggle("low", remaining < 5000);
@@ -275,6 +298,7 @@ function renderReveal(mine) {
   const q = game.question;
   const r = game.reveal;
   const res = mine?.result;
+  const streak = mine?.me?.streak ?? 0;
   draw(`r:${game.index}:${res ? 1 : 0}`, () => {
     let verdict = `<div class="verdict"><h3 class="waiting-dots">Checking</h3></div>`;
     if (res && res.choice === null) {
@@ -283,14 +307,15 @@ function renderReveal(mine) {
       verdict = `
         <div class="verdict good">
           <h3>Correct!</h3>
-          <div class="pts">+${fmt(res.points)}</div>
-          ${res.bonus ? `<p class="sub" style="margin:4px 0 0">including a 🔥 streak bonus of +${fmt(res.bonus)}</p>` : ""}
+          <div class="burst">+<span id="burst">${fmt(res.points)}</span></div>
+          ${res.bonus ? `<p class="sub" style="margin:4px 0 0">including a streak bonus of +${fmt(res.bonus)}</p>` : ""}
+          ${streak >= 2 ? `<span class="streak-msg">🔥 ${streak} in a row!</span>` : ""}
         </div>`;
     } else if (res) {
       verdict = `<div class="verdict bad"><h3>Not this time</h3><p class="sub" style="margin:0">The right answer is marked below.</p></div>`;
     }
     return `
-      ${header(mine?.me?.score ?? lastScore)}
+      ${header(mine?.me?.score ?? lastScore, mine)}
       ${verdict}
       <div class="opts">
         ${q.options.map((o, i) => `
@@ -304,8 +329,19 @@ function renderReveal(mine) {
     if (res && celebrated !== screenKey) {
       celebrated = screenKey;
       buzz(res.correct ? [50] : [90, 60, 90]);
+      if (res.correct) {
+        countUp($("burst"), 0, res.points, 900);
+        if (streak >= 3) confetti(1500, 80);
+      }
     }
-  });
+  }, res ? (res.correct ? "good" : "bad") : "");
+}
+
+/* Restarts a CSS animation on el. */
+function replay(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
 }
 
 function renderStanding(mine) {
@@ -336,7 +372,12 @@ function renderFinal(mine) {
         <div class="face">${escapeHtml(session.avatar)}</div>
         <p class="eyebrow">${escapeHtml(game.title)} · final</p>
         <div class="rank">${ordinal(s.rank)}</div>
-        <p class="sub">of ${s.of} · ${fmt(mine.me.score)} points · ${f.correct} of ${f.played} right</p>
+        <p class="sub">of ${s.of} · ${fmt(mine.me.score)} points</p>
+        <div class="stats">
+          <div class="stat"><b>${f.played ? Math.round((f.correct / f.played) * 100) : 0}%</b><span>${f.correct} of ${f.played} right</span></div>
+          <div class="stat"><b>🔥 ${f.bestStreak}</b><span>best streak</span></div>
+          <div class="stat"><b>${f.avgCorrectMs == null ? "—" : (f.avgCorrectMs / 1000).toFixed(1) + "s"}</b><span>per right answer</span></div>
+        </div>
         ${f.badges.length ? `<div class="badges">${f.badges.map(b => `
           <div class="badge"><span class="e">${escapeHtml(b.emoji)}</span><b>${escapeHtml(b.title)}</b>${b.detail ? `<small>${escapeHtml(b.detail)}</small>` : ""}</div>`).join("")}</div>` : ""}
         <div class="card" style="text-align:left;margin-top:18px">
@@ -384,6 +425,7 @@ function leave() {
 
 function showMessage(title, text) {
   drawn = "";
+  document.body.dataset.mood = "";
   app.innerHTML = `
     <p class="eyebrow">Quizly</p>
     <h1>${escapeHtml(title)}</h1>

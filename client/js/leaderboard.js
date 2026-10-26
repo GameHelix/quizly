@@ -7,6 +7,8 @@
 import { countUp } from "./fx.js";
 import { escapeHtml } from "./ui.js";
 
+const MEDALS = ["🥇", "🥈", "🥉"];
+
 export function renderBoard(list, rows, { gains = true } = {}) {
   const before = new Map([...list.children].map(li => [li.dataset.id, li.getBoundingClientRect().top]));
   const kept = new Map([...list.children].map(li => [li.dataset.id, li]));
@@ -20,7 +22,7 @@ export function renderBoard(list, rows, { gains = true } = {}) {
       li.className = "enter";
     }
     li.innerHTML = `
-      <span class="rk">${r.rank}</span>
+      <span class="rk${r.rank <= 3 ? " medal" : ""}">${MEDALS[r.rank - 1] ?? r.rank}</span>
       <span class="av">${escapeHtml(r.avatar)}</span>
       <span class="nm">${escapeHtml(r.nickname)}</span>
       <span class="mv">${moveHtml(r.move)}</span>

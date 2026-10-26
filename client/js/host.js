@@ -7,10 +7,10 @@
  */
 
 import { LETTERS } from "/shared/quiz.js";
-import { confetti, sound } from "./fx.js";
+import { bump, confetti, sound } from "./fx.js";
 import { renderBoard } from "./leaderboard.js";
 import { clock, getState, poll } from "./live.js";
-import { $, adminGate, api, escapeHtml, fmt, keepAwake, plural, toast } from "./ui.js";
+import { $, adminGate, api, escapeHtml, fitToScreen, fmt, keepAwake, keepFitting, plural, toast } from "./ui.js";
 
 const app = $("app");
 let game = null;
@@ -20,8 +20,10 @@ let ticker = null;
 let busy = false;
 let lastSecond = null;
 let seenPlayers = 0;
+let seenAnswers = 0;
 
 await adminGate(app, "the host screen");
+keepFitting();
 open();
 window.addEventListener("hashchange", open);
 
@@ -153,6 +155,7 @@ function draw(fingerprint, html, after) {
   app.innerHTML = html();
   wire();
   after?.();
+  fitToScreen();
   return true;
 }
 
@@ -160,7 +163,7 @@ function lobby() {
   const url = new URL(game.joinUrl);
   const local = url.hostname === "localhost" || url.hostname.startsWith("127.");
   draw(`lobby:${game.pin}`, () => `
-    <div class="stage">
+    <div class="stage ambient">
       <div class="hbar"><p class="eyebrow">${escapeHtml(game.title)}</p><span class="grow"></span>${toolbar()}</div>
       <div class="lobby">
         <section class="joincard">
@@ -191,7 +194,10 @@ function lobby() {
       ? "Click a name to remove it. Start when everyone is in — lock the game with L once they are."
       : "Waiting for the first player…";
   updateChips(game.roster || []);
-  if (game.players > seenPlayers && seenPlayers > 0) sound.join();
+  if (game.players > seenPlayers && seenPlayers > 0) {
+    sound.join();
+    bump($("count"));
+  }
   seenPlayers = game.players;
 }
 
@@ -214,6 +220,7 @@ function updateChips(roster) {
     };
     box.append(chip);
   }
+  if (roster.length !== have.size) fitToScreen();
 }
 
 function question(key) {
@@ -241,9 +248,12 @@ function question(key) {
     </div>`);
   if (fresh) {
     lastSecond = null;
+    seenAnswers = 0;
     ticker = setInterval(tick, 100);
   }
   tick();
+  if (game.answered > seenAnswers) bump($("answered"));
+  seenAnswers = game.answered;
 }
 
 function tick() {
@@ -297,7 +307,7 @@ function reveal(key) {
       <h2 class="hq small">${escapeHtml(q.prompt)}</h2>
       <div class="tiles reveal">
         ${q.options.map((o, i) => `
-          <div class="tile c${i} ${i === r.answer ? "right" : "dim"}">
+          <div class="tile c${i} ${i === r.answer ? "right" : "dim"}" style="--i:${i}">
             <span class="fill" data-w="${((r.counts[i] / total) * 100).toFixed(1)}"></span>
             <span class="k">${i === r.answer ? "✓" : LETTERS[i]}</span>
             <span class="t">${escapeHtml(o)}</span>
@@ -335,6 +345,7 @@ function scoreboard(key) {
       </div>
     </div>`, () => {
     renderBoard($("board"), (game.leaderboard || []).slice(0, 10));
+    fitToScreen();
     // A name that should not be on a projector can go from here too.
     $("board").onclick = e => {
       const row = e.target.closest("li[data-id]");
@@ -381,6 +392,7 @@ function final(key) {
       renderCreate();
     };
     if ($("rest")) renderBoard($("rest"), lb.slice(3, 10), { gains: false });
+    fitToScreen();
     // In time with first place rising onto the podium.
     setTimeout(() => {
       confetti(4500, 240);

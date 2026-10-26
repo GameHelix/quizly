@@ -203,7 +203,16 @@ function draw(fingerprint, html, after, mood = "") {
     const title = { lobby: "You're in the lobby", question: `Question ${(game?.index || 0) + 1}`, reveal: "Your answer result", leaderboard: "Your standing", final: "Your final results" }[game?.phase] || "Connecting to your game";
     document.title = `${title} · Quizly`;
     app.innerHTML = `<div class="player-shell"><header class="player-top">${brand()}<div class="bar"><span class="pill">PIN ${session?.pin || ""}</span><button class="text-btn" data-leave>Leave</button></div></header><div class="player-content"><h1 class="sr-only">${title}</h1>${html()}</div></div>`;
-    if (newPhase) { window.scrollTo({ top: 0, behavior: "instant" }); announce(title); }
+    if (newPhase) {
+      // "instant" overrides the page's smooth scrolling; an older browser that
+      // rejects the option must not stop the screen from being wired up below
+      try {
+        window.scrollTo({ top: 0, behavior: "instant" });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+      announce(title);
+    }
     after?.();
   }
 }

@@ -126,11 +126,14 @@ export async function adminGate(root, what = "this page") {
   });
 }
 
-/* Native dialog gives keyboard focus trapping, Escape, and focus restoration. */
+/* Native dialog gives keyboard focus trapping, Escape, and focus restoration.
+ * Ids come from a counter: crypto.randomUUID() is missing on plain-http LAN
+ * addresses, which is how phones reach a laptop running the game locally. */
+let dialogs = 0;
 export function askDialog({ title, message = "", value, confirmLabel = "Continue", danger = false }) {
   return new Promise(resolve => {
     const dialog = document.createElement("dialog");
-    const id = `dialog-${crypto.randomUUID()}`;
+    const id = `dialog-${++dialogs}`;
     dialog.setAttribute("aria-labelledby", id);
     if (message) dialog.setAttribute("aria-describedby", `${id}-message`);
     dialog.innerHTML = `<form method="dialog"><span class="panel-icon">${icon(danger ? "flag" : "spark")}</span>

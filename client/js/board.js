@@ -110,10 +110,11 @@ function show(game) {
         <ol class="board" id="board"></ol>
         <div class="awards" id="awards"></div>
         <p class="note" id="empty"></p>
-        <p class="spectator-note">${icon("bolt")} Every question is a chance to climb. Keep playing.</p>
+        <p class="spectator-note" id="spectator-note">${icon("bolt")} Every question is a chance to climb. Keep playing.</p>
       </div>`);
     const rows = game.leaderboard || [];
     $("board-title").textContent = game.phase === "final" ? "The final bragging rights." : "A little friendly rivalry.";
+    $("spectator-note").classList.toggle("hidden", game.phase === "final");
     const json = JSON.stringify(rows);
     if (json !== boardJson) {
       boardJson = json;

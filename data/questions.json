@@ -1,12 +1,14 @@
 {
   "version": 1,
+  "title": "AI Quiz",
   "settings": {
-    "questionsPerRound": 5,
+    "questionsPerRound": 10,
     "secondsPerQuestion": 20,
     "shuffleQuestions": true,
     "shuffleOptions": true,
     "basePoints": 500,
-    "speedBonus": 500
+    "speedBonus": 500,
+    "streakBonus": 100
   },
   "questions": [
     {

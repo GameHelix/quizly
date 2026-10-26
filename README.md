@@ -30,6 +30,24 @@ panel at `/admin`. Vercel project `quizly` in the PRE team; database on Neon.
   that rises third–second–first, end-of-game awards (⚡ fastest finger, 🔥 longest
   streak, 📈 comeback since half-time) and badges on each phone (🏆 💯 …).
 
+## Interface and game experience
+
+All pages share the Quizly playroom style: forest green and lime, local variable
+fonts, original SVG artwork, and consistent navigation that also works on phones.
+The player lobby explains the next step; round progress and three- and five-answer
+streak challenges follow the player's actual game state. Answer selection locks
+visibly, reveals label the correct answer, and explanations reinforce learning.
+Players can also answer with A–F or 1–6 on a keyboard.
+
+The host setup leads into a lobby with a copyable invite link, QR code, player
+roster, and controls for sound, locking, and full screen. The presenter layout fits
+the viewport without shrinking in response to decorative entrance animations.
+The quiz studio includes question search, category filters, keyboard-accessible
+tabs, live scoring previews, and game results with keyboard-scrollable tables.
+Help, quiz naming, and confirmations use dialogs with focus trapping and Escape
+support. Motion effects and haptics respect reduced-motion preferences. Font
+licenses are included in `client/fonts/`.
+
 ## Layout
 
 ```

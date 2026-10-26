@@ -3,61 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f5f2eb">
+<meta name="theme-color" content="#f7f8f2">
 <meta name="robots" content="noindex">
 <title>Quizly — admin</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300..800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-<main id="app">
+<a class="skip-link" href="#app">Skip to content</a>
+<main id="app" tabindex="-1">
   <div class="wrap"><p class="eyebrow">Quizly</p><h1>Loading…</h1></div>
 </main>
 
 <template id="admin-ui">
 <div class="wrap wide">
-  <div class="row">
-    <div>
-      <p class="eyebrow">Quizly</p>
-      <h1 style="margin-bottom:6px">Admin panel</h1>
-    </div>
-    <span class="bar">
-      <a class="btn" href="/host">Host a game</a>
-      <a class="btn quiet" href="/board">Leaderboard screen</a>
-      <button class="quiet" id="signout">Sign out</button>
-    </span>
+  <div class="studio-heading">
+    <div><p class="eyebrow">Make something worth playing</p><h1>Your quiz studio.</h1><p class="sub">A great question is all it takes to get the room going.</p></div>
+    <span class="bar"><span class="live-label">YOUR WORKSPACE</span><button class="quiet" id="signout">Sign out</button></span>
   </div>
-
-  <div class="card bar" style="margin-top:18px">
-    <label for="quiz" style="margin:0">Quiz</label>
-    <select id="quiz" style="width:auto;min-width:240px;flex:1"></select>
-    <button class="ghost" id="new-quiz">New quiz</button>
+  <div class="studio-stats" aria-label="Quiz library overview">
+    <div class="studio-stat"><span class="stat-icon" data-icon="grid"></span><div><b id="stat-quizzes">0</b><small>Quizzes in your library</small></div></div>
+    <div class="studio-stat"><span class="stat-icon" data-icon="book"></span><div><b id="stat-questions">0</b><small>Questions in this quiz</small></div></div>
+    <div class="studio-stat"><span class="stat-icon" data-icon="spark"></span><div><b id="stat-categories">0</b><small>Categories to explore</small></div></div>
+  </div>
+  <div class="card library-picker">
+    <label for="quiz">Your quiz</label>
+    <select id="quiz"></select>
+    <button id="new-quiz"><span data-icon="plus"></span> New quiz</button>
     <button class="quiet" id="rename-quiz">Rename</button>
     <button class="danger" id="delete-quiz">Delete</button>
   </div>
-
-  <nav class="tabs">
-    <button data-tab="questions" class="on">Questions</button>
-    <button data-tab="settings">Settings</button>
-    <button data-tab="data">Import &amp; export</button>
-    <button data-tab="results">Results</button>
+  <nav class="tabs" role="tablist" aria-label="Quiz studio sections">
+    <button data-tab="questions" id="nav-questions" role="tab" aria-controls="tab-questions" aria-selected="true" class="on"><span data-icon="book"></span> Questions</button>
+    <button data-tab="settings" id="nav-settings" role="tab" aria-controls="tab-settings" aria-selected="false" tabindex="-1"><span data-icon="bolt"></span> Game settings</button>
+    <button data-tab="data" id="nav-data" role="tab" aria-controls="tab-data" aria-selected="false" tabindex="-1"><span data-icon="grid"></span> Import &amp; export</button>
+    <button data-tab="results" id="nav-results" role="tab" aria-controls="tab-results" aria-selected="false" tabindex="-1"><span data-icon="trophy"></span> Game results</button>
   </nav>
-
-  <section id="tab-questions">
-    <div class="bar" style="margin-bottom:20px">
-      <button id="add">Add question</button>
-      <select id="filter" style="width:auto"><option value="">All categories</option></select>
-      <span class="pill" id="count"></span>
+  <section id="tab-questions" role="tabpanel" aria-labelledby="nav-questions" tabindex="0">
+    <div class="question-tools">
+      <div class="search-field"><span data-icon="search"></span><input id="search" type="search" aria-label="Search questions" placeholder="Find a question, category, or answer…"></div>
+      <select id="filter" aria-label="Filter by category"><option value="">All categories</option></select>
+      <span class="pill" id="count" role="status"></span>
+      <button id="add"><span data-icon="plus"></span> Add question</button>
     </div>
     <div id="editor" class="card hidden" style="margin-bottom:24px"></div>
     <div id="list"></div>
   </section>
 
-  <section id="tab-settings" class="hidden">
-    <div class="card">
+  <section id="tab-settings" class="hidden" role="tabpanel" aria-labelledby="nav-settings" tabindex="0">
+    <div class="panel-heading"><h2>Set the pace. Raise the stakes.</h2><p>Find the right mix of thinking time, quick wins, and streak rewards.</p></div>
+    <div class="settings-layout"><div class="card">
       <div class="grid2">
         <div class="field">
           <label for="s-count">Questions per game</label>
@@ -91,29 +87,31 @@
       <p class="note">A correct answer scores its points plus a share of the speed bonus for the time left.
         The streak bonus adds that much again for each answer in an unbroken run, up to five times. Games
         already created keep the settings they started with.</p>
-      <button id="save-settings">Save settings</button>
-    </div>
+      <button id="save-settings">Save game settings</button>
+    </div><aside class="settings-guide"><span data-icon="bolt"></span><h3>Make every answer count.</h3><p>With these settings, a correct answer can earn:</p><div class="scoring-example" id="scoring-preview">—</div><p>points before streak bonuses.</p><p id="streak-preview"></p><p>Short timers add energy. Longer timers give everyone room to think. New settings apply to new games.</p></aside></div>
   </section>
 
-  <section id="tab-data" class="hidden">
+  <section id="tab-data" class="hidden" role="tabpanel" aria-labelledby="nav-data" tabindex="0">
+    <div class="panel-heading"><h2>Good quizzes deserve to be shared.</h2><p>Bring in your question collection or save a copy for your next game night.</p></div><div class="import-grid">
     <div class="card" style="margin-bottom:16px">
-      <h3>Export</h3>
+      <span data-icon="book"></span><h3>Take your quiz with you</h3>
       <p class="note">Downloads this quiz — title, settings and questions — as a JSON file you can keep, edit or import elsewhere.</p>
       <button id="export">Download this quiz</button>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <h3>Import as a new quiz</h3>
-      <p class="note">Adds a quiz from a JSON file in the same shape. <code>data/questions.json</code> in the project is one.</p>
-      <input type="file" id="import-new" accept="application/json,.json">
+      <span data-icon="plus"></span><h3>Bring a new quiz in</h3>
+      <p class="note">Choose an exported Quizly JSON file. Your existing quizzes stay in your library.</p>
+      <label for="import-new">Quiz file (.json)</label><input type="file" id="import-new" accept="application/json,.json">
     </div>
-    <div class="card">
-      <h3>Replace this quiz</h3>
+    <div class="card replace-card">
+      <h3>Replace the selected quiz</h3>
       <p class="note">Swaps this quiz's questions and settings for those in the file. Nothing changes if the file has a problem.</p>
-      <input type="file" id="import-replace" accept="application/json,.json">
-    </div>
+      <label for="import-replace">Replacement quiz file (.json)</label><input type="file" id="import-replace" accept="application/json,.json">
+    </div></div>
   </section>
 
-  <section id="tab-results" class="hidden">
+  <section id="tab-results" class="hidden" role="tabpanel" aria-labelledby="nav-results" tabindex="0">
+    <div class="panel-heading"><h2>Every game tells a story.</h2><p>Revisit the rivalries, celebrate the wins, and see what stuck.</p></div><button class="quiet" id="refresh-results" style="margin-bottom:20px">Refresh results</button>
     <div id="games"></div>
     <div id="game" class="hidden"></div>
   </section>
@@ -121,6 +119,7 @@
 </template>
 
 <div class="toast" id="toast" role="status"></div>
+<noscript><p class="card">Turn on JavaScript to join and play a live quiz.</p></noscript>
 <script type="module" src="/js/admin.js"></script>
 </body>
 </html>

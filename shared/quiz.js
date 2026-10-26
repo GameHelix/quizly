@@ -1,78 +1,105 @@
-/* Shared data layer for the player and the admin panel.
- *
- * Source of truth is data/questions.json. The admin panel saves edits to
- * localStorage, which overrides the file until it is reset or exported.
- * When you port this to Next.js, replace loadQuiz/saveQuiz with calls to
- * your API route; nothing else in the app touches storage.
+/* Quiz rules shared by the server and the browser: the bank's shape,
+ * validation, shuffling and scoring. Pure functions only — no storage and
+ * no DOM — so both sides import this same file. The server serves it to
+ * the browser at /shared/quiz.js.
  */
 
-const STORAGE_KEY = "ai-quiz:data:v1";
+export const LETTERS = "ABCDEF";
+const MIN_OPTIONS = 2;
+export const MAX_OPTIONS = 6;
+export const DIFFICULTIES = ["easy", "medium", "hard"];
+const MAX_STREAK_STEPS = 5;
+export const NICKNAME_MAX = 20;
+const TITLE_MAX = 80;
 
-export async function loadQuiz() {
-  const local = readLocal();
-  if (local) return local;
-  const res = await fetch("../data/questions.json", { cache: "no-store" });
-  if (!res.ok) throw new Error("Could not load questions.json (" + res.status + ")");
-  return normalise(await res.json());
-}
+export const AVATARS = [
+  "🦊", "🐼", "🐯", "🦁", "🐸", "🐙", "🦄", "🐝", "🐧", "🦉", "🐨", "🐵",
+  "🐳", "🦖", "🐢", "🦩", "🐞", "🦔", "🐶", "🐱", "🐰", "🐻", "🐮", "🐷"
+];
 
-export async function loadDefaults() {
-  const res = await fetch("../data/questions.json", { cache: "no-store" });
-  if (!res.ok) throw new Error("Could not load questions.json (" + res.status + ")");
-  return normalise(await res.json());
-}
+/* [min, max] for every numeric setting. The admin form uses the same numbers. */
+const SETTING_LIMITS = {
+  questionsPerRound: [1, 50],
+  secondsPerQuestion: [5, 120],
+  basePoints: [0, 5000],
+  speedBonus: [0, 5000],
+  streakBonus: [0, 1000]
+};
 
-export function saveQuiz(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalise(data)));
-}
+const TEXT_LIMITS = { prompt: 400, option: 160, explanation: 1000, category: 40 };
 
-export function clearLocal() {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
-export function hasLocalEdits() {
-  return readLocal() !== null;
-}
-
-function readLocal() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? normalise(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
-}
-
-/* Fills in anything a hand-edited file left out, so the UI never
- * has to defend against a missing field. */
+/* Fills in anything a hand-edited file left out, so the rest of the app
+ * never has to defend against a missing field. A quiz file is
+ * { version, title, settings, questions }; data/questions.json is one. */
 export function normalise(data) {
   const d = data && typeof data === "object" ? data : {};
-  const s = d.settings || {};
   return {
     version: d.version || 1,
-    settings: {
-      questionsPerRound: num(s.questionsPerRound, 5),
-      secondsPerQuestion: num(s.secondsPerQuestion, 20),
-      shuffleQuestions: s.shuffleQuestions !== false,
-      shuffleOptions: s.shuffleOptions !== false,
-      basePoints: num(s.basePoints, 500),
-      speedBonus: num(s.speedBonus, 500)
-    },
-    questions: (Array.isArray(d.questions) ? d.questions : []).map((q, i) => ({
-      id: q.id || "q" + String(i + 1).padStart(2, "0"),
-      category: q.category || "General",
-      difficulty: q.difficulty || "medium",
-      prompt: q.prompt || "",
-      options: Array.isArray(q.options) ? q.options.slice(0, 6) : ["", ""],
-      answer: num(q.answer, 0),
-      explanation: q.explanation || ""
-    }))
+    title: cleanTitle(d.title),
+    settings: normaliseSettings(d.settings),
+    questions: (Array.isArray(d.questions) ? d.questions : []).map(normaliseQuestion)
   };
 }
 
-function num(v, fallback) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+export function normaliseSettings(s) {
+  const src = s && typeof s === "object" ? s : {};
+  const pick = (key, fallback) => clamp(Math.round(num(src[key], fallback)), SETTING_LIMITS[key]);
+  return {
+    questionsPerRound: pick("questionsPerRound", 5),
+    secondsPerQuestion: pick("secondsPerQuestion", 20),
+    shuffleQuestions: src.shuffleQuestions !== false,
+    shuffleOptions: src.shuffleOptions !== false,
+    basePoints: pick("basePoints", 500),
+    speedBonus: pick("speedBonus", 500),
+    streakBonus: pick("streakBonus", 100)
+  };
+}
+
+export function normaliseQuestion(q, i = 0) {
+  const src = q && typeof q === "object" ? q : {};
+  return {
+    id: text(src.id) || "q" + String(i + 1).padStart(2, "0"),
+    category: text(src.category) || "General",
+    difficulty: DIFFICULTIES.includes(src.difficulty) ? src.difficulty : "medium",
+    prompt: text(src.prompt),
+    options: Array.isArray(src.options) ? src.options.slice(0, MAX_OPTIONS).map(text) : ["", ""],
+    answer: num(src.answer, 0),
+    explanation: text(src.explanation)
+  };
+}
+
+/* What is wrong with a normalised question, in words for the admin, or null. */
+export function questionProblem(q) {
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(q.id)) return "The id may only use letters, digits, - and _ (40 at most)";
+  if (!q.prompt) return "The question text is empty";
+  if (q.prompt.length > TEXT_LIMITS.prompt) return `The question is over ${TEXT_LIMITS.prompt} characters`;
+  if (q.options.length < MIN_OPTIONS) return "At least two options are needed";
+  if (q.options.some(o => !o)) return "One of the options is blank";
+  if (q.options.some(o => o.length > TEXT_LIMITS.option)) return `An option is over ${TEXT_LIMITS.option} characters`;
+  if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.options.length) return "Mark which option is correct";
+  if (q.category.length > TEXT_LIMITS.category) return `The category is over ${TEXT_LIMITS.category} characters`;
+  if (q.explanation.length > TEXT_LIMITS.explanation) return `The explanation is over ${TEXT_LIMITS.explanation} characters`;
+  return null;
+}
+
+/* Trims, folds runs of whitespace and drops control and direction-override
+ * characters. Returns "" when nothing usable is left. */
+export function cleanNickname(raw) {
+  return cleanLine(raw, NICKNAME_MAX);
+}
+
+export function cleanTitle(raw) {
+  return cleanLine(raw, TITLE_MAX);
+}
+
+function cleanLine(raw, max) {
+  if (typeof raw !== "string") return "";
+  // Whitespace first, so a newline becomes a space rather than vanishing with the
+  // control characters; then at most two combining marks per letter, so nobody's
+  // name towers over the others on the projector.
+  const s = raw.normalize("NFC").replace(/\s+/g, " ").replace(/[\p{Cc}\p{Cf}]/gu, "")
+    .replace(/(\p{M}{2})\p{M}+/gu, "$1").trim();
+  return [...s].slice(0, max).join("");
 }
 
 export function shuffle(arr) {
@@ -84,13 +111,29 @@ export function shuffle(arr) {
   return a;
 }
 
+/* A correct answer is worth basePoints plus a share of speedBonus for the
+ * time left on the clock: basePoints + speedBonus at once, basePoints at the buzzer. */
 export function scoreFor(correct, elapsedMs, limitMs, settings) {
   if (!correct) return 0;
   const left = Math.max(0, limitMs - Math.min(elapsedMs, limitMs));
   return Math.round(settings.basePoints + settings.speedBonus * (left / limitMs));
 }
 
-export function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/* Extra points for a correct answer that continues a run: streakBonus for
+ * the second in a row, twice that for the third, capped at MAX_STREAK_STEPS. */
+export function streakBonusFor(streakBefore, settings) {
+  return settings.streakBonus * Math.min(Math.max(0, streakBefore), MAX_STREAK_STEPS);
+}
+
+function text(v) {
+  return v == null ? "" : String(v).trim();
+}
+
+function num(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function clamp(n, [min, max]) {
+  return Math.min(max, Math.max(min, n));
 }

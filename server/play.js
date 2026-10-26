@@ -232,7 +232,7 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
     const bonus = correct ? streakBonusFor(p.streak, game.settings) : 0;
     const points = scoreFor(correct, elapsedMs, game.limitMs, game.settings) + bonus;
 
-    const counts = await tx(pool, async c => {
+    await tx(pool, async c => {
       // FOR SHARE: a reveal that starts now waits for this answer, and an answer
       // that starts after the reveal finds the question closed.
       const open = await c.query(
@@ -243,11 +243,13 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict do nothing`,
         [game.id, p.id, index, choice, correct, points, bonus, elapsedMs, Date.now()]);
       if (!inserted.rowCount) throw new GameError("already_answered");
-      return answerCounts(c, game.id, index);
     });
     forget(game.pin);
     meCache.delete(`${p.id}:${game.status}:${game.phase}:${game.index}`);
-    // Everyone is in: no reason to make the room wait for the clock.
+    // Everyone is in: no reason to make the room wait for the clock. Counted after
+    // the commit, never inside it: when the last answers land together, each
+    // transaction sees only its own, but whichever commits last sees them all.
+    const counts = await answerCounts(pool, game.id, index);
     if (counts.answered >= counts.players) await settle(game);
     return { ok: true, index, choice };
   }

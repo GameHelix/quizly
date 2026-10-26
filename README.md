@@ -3,19 +3,20 @@
 Plain HTML, CSS and ES modules. No build step, no dependencies.
 
 ```
-questions.json   the question bank and round settings — the only data file
-store.js         load / save / normalise / scoring helpers
-index.html       player
-quiz.js          player logic
-admin.html       admin panel
-admin.js         admin logic
-styles.css       shared styles
+data/questions.json     the question bank and round settings — the only data file
+shared/quiz.js          load / save / normalise / scoring helpers
+client/index.html       player
+client/js/player.js     player logic
+client/admin.html       admin panel
+client/js/admin.js      admin logic
+client/css/styles.css   shared styles
+client/favicon.ico      the icon both pages link
 ```
 
 ## Running it
 
-The pages fetch `questions.json`, so a browser opened on `file://` will block it.
-Serve the folder:
+The pages fetch `data/questions.json`, so a browser opened on `file://` will block it.
+Serve the repository root, so `client/`, `shared/` and `data/` are all reachable:
 
 ```
 npx serve .
@@ -23,7 +24,7 @@ npx serve .
 python3 -m http.server 8000
 ```
 
-Then open the printed address. `index.html` is the quiz, `admin.html` is the panel.
+Then open `/client/` at the printed address. `index.html` is the quiz, `admin.html` is the panel.
 
 ## How the data flows
 

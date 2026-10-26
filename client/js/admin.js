@@ -1,4 +1,4 @@
-import { loadQuiz, loadDefaults, saveQuiz, clearLocal, hasLocalEdits, normalise, escapeHtml } from "./store.js";
+import { loadQuiz, loadDefaults, saveQuiz, clearLocal, hasLocalEdits, normalise, escapeHtml } from "../../shared/quiz.js";
 
 let quiz = null;
 let editingId = null;   // id being edited, or "__new__", or null

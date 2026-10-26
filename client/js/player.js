@@ -1,4 +1,4 @@
-import { loadQuiz, shuffle, scoreFor, escapeHtml } from "./store.js";
+import { loadQuiz, shuffle, scoreFor, escapeHtml } from "../../shared/quiz.js";
 
 const app = document.getElementById("app");
 

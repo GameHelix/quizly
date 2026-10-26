@@ -192,6 +192,10 @@ test("a whole game: join, answer, reveal, streaks, the clock, the podium and the
   a = (await me(aysel)).data;
   assert.equal(a.final.correct, 3);
   assert.equal(a.final.played, 3);
+  assert.equal(a.final.bestStreak, 3);
+  assert.ok(a.final.avgCorrectMs >= 0);
+  assert.deepEqual(a.history, [true, true, true], "the trail of dots");
+  assert.deepEqual((await me(kamran)).data.history, [false, true, null], "wrong, right, no answer");
   assert.deepEqual(a.final.badges.map(b => b.title), ["Winner", "Flawless", "Fastest finger", "Longest streak"]);
   assert.equal(a.final.podium.length, 3);
   assert.equal((await answer(kamran, 2, 0)).data.code, "not_open");

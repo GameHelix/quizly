@@ -9,6 +9,9 @@ Built for rooms of fifty or sixty people and tested well past that (see
 [Capacity](#capacity)). Plain HTML, CSS and JavaScript in the browser — no build
 step, no framework — an Express API, and Postgres.
 
+**Live:** https://quizly-lemon-tau.vercel.app — the host screen is at `/host`, the admin
+panel at `/admin`. Vercel project `quizly` in the PRE team; database on Neon.
+
 ## What is in it
 
 - **Host screen** (`/host`) — pick a quiz, show the QR code, PIN and the names
@@ -179,7 +182,13 @@ once a second, answer at human speed, and in part drop out or reload mid-game:
 | 250 | 28,595 (5 questions)  | 0 | 11 ms | 250/250 |
 
 In every run each phone's final score matched the points its reveals reported, and ranks
-ran 1…N with no gaps. `npm run abuse-test` passes 34 checks: forged and edited cookies,
+ran 1…N with no gaps.
+
+The same 60-phone game against the live deployment, run from Baku (the function and the
+database sit in Ohio, the CDN edge in Stockholm): 12,216 requests, no failures, 60/60
+answers on every question; polls 71 ms at the median, answers 224 ms (340 ms p99) — the
+distance, not the server. A full game in real browsers (Chromium, and WebKit as on an
+iPhone) ran without a console error, and the abuse suite passed all 34 checks there too. `npm run abuse-test` passes 34 checks: forged and edited cookies,
 cross-site requests, token reuse across players, SQL injection, script injection in
 nicknames, prototype pollution, path traversal, oversized and malformed bodies, races
 (25 simultaneous answers from one phone → one counts; 30 simultaneous Next presses → one

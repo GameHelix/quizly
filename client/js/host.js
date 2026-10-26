@@ -377,7 +377,7 @@ function final(key) {
   draw(key, () => `
     <div class="stage">
       <div class="hbar">${brand()}<p class="eyebrow">${escapeHtml(game.title)} · final results</p><span class="grow"></span>${toolbar()}</div>
-      <h1 class="hq small" style="text-align:center">Big brains. Well-earned bragging rights.</h1>
+      <h1 class="hq small podium-title" style="text-align:center">Big brains. Well-earned bragging rights.</h1>
       <div class="podium">${place(lb[1], 2)}${place(lb[0], 1)}${place(lb[2], 3)}</div>
       ${game.awards?.length ? `
         <div class="awards">

@@ -389,9 +389,10 @@ body.host { overflow-x: hidden; }
 .qr { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 10px; width: min(100%, calc(var(--k) * 340px)); aspect-ratio: 1; display: block; margin: 0 auto 16px; }
 .pin { font-size: calc(var(--k) * clamp(40px, 4.4vw, 76px)); font-weight: 800; letter-spacing: .04em; line-height: 1; margin: 6px 0 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .warn { background: var(--accent-bg); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 14px; font-size: 14px; text-align: left; margin-top: 16px; }
-.chips { display: flex; flex-wrap: wrap; gap: calc(var(--k) * 10px); align-content: flex-start; }
+/* --ck shrinks the names alone when a crowded lobby fills the screen (fitToScreen) */
+.chips { display: flex; flex-wrap: wrap; gap: calc(var(--k) * var(--ck, 1) * 10px); align-content: flex-start; }
 .chip {
-  font-size: calc(var(--k) * clamp(16px, 1.5vw, 22px)); font-weight: 600; background: var(--surface); color: var(--text);
+  font-size: calc(var(--k) * var(--ck, 1) * clamp(16px, 1.5vw, 22px)); font-weight: 600; background: var(--surface); color: var(--text);
   border: 1px solid var(--line); border-radius: 999px; padding: .36em .75em .36em .5em; box-shadow: var(--shadow);
   animation: pop .45s cubic-bezier(.2, 1.6, .4, 1) both;
 }
@@ -683,6 +684,10 @@ ol.board li:nth-child(1) { border-color: #b6ce8a; background: linear-gradient(90
 .board-entry h2 { font-size: 24px; }
 .board-column-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; padding: 0 20px; }
 .spectator-note { text-align: center; font-size: 12px; color: var(--muted); margin-top: auto; }
+/* fitToScreen measures a stage by its children's boxes, without margins */
+.stage > p { margin-bottom: 0; }
+/* a screen too full to fit lets its decoration go before anything shrinks */
+.stage.tight .lobby-heading, .stage.tight .lobby .mission-panel, .stage.tight .podium-title, .stage.tight .spectator-note { display: none; }
 
 /* Quiz studio */
 .studio-heading { display: flex; justify-content: space-between; gap: 20px; align-items: flex-end; margin-bottom: 28px; }

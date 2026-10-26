@@ -223,6 +223,18 @@ test("a whole game: join, answer, reveal, streaks, the clock, the podium and the
   assert.equal((await admin("DELETE", `/api/admin/games/${game.id}`)).status, 200);
 });
 
+test("when the last answers arrive together, the question still closes at once", async () => {
+  const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
+  const room = [];
+  for (let i = 0; i < 6; i++) room.push((await anon("POST", `/api/games/${pin}/players`, { nickname: `Racer ${i}` })).data);
+  await admin("POST", `/api/host/games/${pin}/next`, { from: { phase: "lobby", index: -1 } });
+  const all = await Promise.all(room.map(p => anon("POST", `/api/games/${pin}/answers`,
+    { playerId: p.playerId, index: 0, choice: 0, elapsedMs: 900 }, bearer(p.token))));
+  assert.ok(all.every(r => r.status === 200));
+  assert.equal((await admin("GET", `/api/host/games/${pin}`)).data.phase, "reveal", "nobody waits for the clock");
+  await admin("POST", `/api/host/games/${pin}/end`);
+});
+
 test("the host can remove a player, and an empty lobby can be closed", async () => {
   const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
   const p = (await anon("POST", `/api/games/${pin}/players`, { nickname: "Troll" })).data;

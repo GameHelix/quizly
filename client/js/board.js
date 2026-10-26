@@ -130,6 +130,7 @@ function show(game) {
           <div class="w">${escapeHtml(a.avatar)} ${escapeHtml(a.nickname)}</div>
           <div class="d">${escapeHtml(a.detail)}</div>
         </div>`).join("");
+      fitToScreen();
       confetti(4000);
       poller?.stop();
     }

@@ -214,29 +214,48 @@ export async function keepAwake() {
 /* Lowers a presenter screen's --k (see styles.css) until its content fits the
  * window without scrolling: a projector cannot scroll, and a long question on
  * a 720p screen would otherwise push its answers off the bottom. Narrow
- * windows — someone's phone — are left to scroll as usual. */
+ * windows — someone's phone — are left to scroll as usual.
+ *
+ * A full screen first sheds its decoration (.tight), then a crowded lobby
+ * shrinks its names (--ck) before the QR code shrinks with everything else:
+ * sixty names must not leave the latecomers a QR code too small to scan. */
 export function fitToScreen() {
   const stage = document.querySelector(".stage");
   if (!stage) return;
-  let k = 1;
-  stage.style.setProperty("--k", k);
+  stage.classList.remove("tight");
+  stage.style.setProperty("--k", 1);
+  stage.style.setProperty("--ck", 1);
   if (innerWidth < 700) return;
   // Measure layout, excluding entrance transforms and decorative overflow.
-  // The lobby's grid can contain a QR card taller than its allocated track.
+  // The lobby's grid stretches to the window, so it counts as tall as the
+  // columns inside it, side by side or stacked.
   const contentHeight = () => {
     const style = getComputedStyle(stage);
-    const blocks = [...stage.children];
-    const heights = blocks.map(el => el.classList.contains("lobby")
-      ? Math.max(0, ...[...el.children].map(child => child.offsetHeight))
-      : el.offsetHeight);
+    const blocks = [...stage.children].filter(el => getComputedStyle(el).display !== "none");
+    const heights = blocks.map(el => {
+      if (!el.classList.contains("lobby")) return el.offsetHeight;
+      const top = el.getBoundingClientRect().top;
+      return Math.max(0, ...[...el.children].map(child => child.getBoundingClientRect().bottom - top));
+    });
     return parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) +
       (parseFloat(style.rowGap) || 0) * Math.max(0, blocks.length - 1) +
       heights.reduce((sum, height) => sum + height, 0);
   };
-  while (k > 0.5 && contentHeight() > innerHeight + 1) {
-    k = Math.round((k - 0.05) * 100) / 100;
-    stage.style.setProperty("--k", k);
-  }
+  const fits = () => contentHeight() <= innerHeight + 1;
+  const shrink = (name, floor) => {
+    let v = Number(stage.style.getPropertyValue(name));
+    while (v > floor && !fits()) {
+      v = Math.round((v - 0.05) * 100) / 100;
+      stage.style.setProperty(name, v);
+    }
+  };
+  shrink("--k", 0.85);
+  if (fits()) return;
+  stage.classList.add("tight");
+  stage.style.setProperty("--k", 1);
+  shrink("--k", 0.85);
+  if (stage.querySelector(".chips > *")) shrink("--ck", 0.6);
+  shrink("--k", 0.5);
 }
 
 document.addEventListener("keydown", e => {
@@ -257,6 +276,8 @@ export function keepFitting() {
     timer = setTimeout(fitToScreen, 120);
   });
   document.fonts?.ready.then(fitToScreen);
+  // a name in, say, Azerbaijani letters loads the extended font later on
+  document.fonts?.addEventListener?.("loadingdone", () => fitToScreen());
 }
 
 /* The red "reconnecting" strip, shown while requests are failing. */

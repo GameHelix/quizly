@@ -13,7 +13,7 @@ const out = path.join(ROOT, "public");
 rmSync(out, { recursive: true, force: true });
 cpSync(path.join(ROOT, "client"), out, { recursive: true });
 cpSync(path.join(ROOT, "shared"), path.join(out, "shared"), { recursive: true });
-for (const page of ["index.html", "host.html", "board.html", "admin.html", "favicon.ico", "shared/quiz.js"]) {
+for (const page of ["index.html", "host.html", "board.html", "admin.html", "404.html", "favicon.ico", "shared/quiz.js"]) {
   if (!existsSync(path.join(out, page))) throw new Error(`build: public/${page} is missing`);
 }
 console.log("build: public/ assembled from client/ and shared/");

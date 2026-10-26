@@ -237,7 +237,7 @@ export function createApp({ config, pool, quizzes, play, results, auth }) {
   const statics = { extensions: ["html"], setHeaders: res => res.set("Cache-Control", "no-cache") };
   app.use("/shared", express.static(path.join(ROOT, "shared"), statics));
   app.use(express.static(path.join(ROOT, "client"), statics));
-  app.use((req, res) => res.status(404).type("text/plain").send("Not found"));
+  app.use((req, res) => res.status(404).sendFile(path.join(ROOT, "client", "404.html")));
 
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);

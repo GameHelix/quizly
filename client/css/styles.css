@@ -396,7 +396,7 @@ body.host { overflow-x: hidden; }
   border: 1px solid var(--line); border-radius: 999px; padding: .36em .75em .36em .5em; box-shadow: var(--shadow);
   animation: pop .45s cubic-bezier(.2, 1.6, .4, 1) both;
 }
-button.chip:hover { border-color: var(--bad); text-decoration: line-through; filter: none; }
+button.chip:hover:not(:disabled) { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); text-decoration: line-through; filter: none; }
 .waiting-dots::after { content: "…"; animation: dots 1.4s steps(4) infinite; display: inline-block; width: 1.2em; text-align: left; }
 
 /* ---------- leaderboards ---------- */
@@ -426,6 +426,9 @@ ol.board .st { font-size: .75em; color: var(--fire); white-space: nowrap; }
 ol.board .gn { font-size: .7em; color: var(--good); font-weight: 600; font-variant-numeric: tabular-nums; }
 ol.board .sc { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }
 ol.board.compact li { font-size: calc(var(--k, 1) * clamp(14px, 1.3vw, 20px)); }
+/* the rest of the top ten under the podium starts at 4th: no medal colours */
+ol.board.compact li:nth-child(n) { border-color: var(--line); background: var(--surface); }
+ol.board.compact li::after { content: none; }
 @media (max-width: 520px) { ol.board li { grid-template-columns: 2em 1.6em 1fr auto auto; gap: 8px; } ol.board .st { display: none; } }
 
 .podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(10px, 2vw, 28px); align-items: end; max-width: 1000px; width: 100%; margin: 0 auto; }
@@ -576,6 +579,8 @@ button.av.on { background: #e8f2d2; border-color: var(--forest); box-shadow: 0 0
 .player-top .brand-mark > span { bottom: 6px; right: 4px; }
 .player-content { max-width: 620px; padding: 27px 22px 42px; margin: 0 auto; }
 .player-content h2 { font-size: 27px; }
+.player-content h2.q-m { font-size: 23px; }
+.player-content h2.q-l { font-size: 19px; }
 .game-head { margin-bottom: 20px; }
 .game-head .row { margin-bottom: 13px; }
 .pill { font-size: 10px; letter-spacing: .04em; padding: 6px 10px; background: #ffffffb0; }
@@ -641,6 +646,7 @@ kbd { display: inline-block; min-width: 23px; border: 1px solid #d6ddce; border-
 .password-wrap { position: relative; }
 .password-wrap input { padding-right: 65px; }
 .password-wrap button { position: absolute; right: 8px; top: 3px; padding: 0 6px; min-height: 42px; border: 0; background: transparent; color: var(--forest); font-size: 11px; }
+.password-wrap button:hover:not(:disabled) { background: transparent; box-shadow: none; text-decoration: underline; }
 
 /* Presenter and spectator displays retain viewport fitting for projectors. */
 .stage { background: #f7f8f2; }

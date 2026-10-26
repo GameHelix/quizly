@@ -1,98 +1,215 @@
-# AI Quiz — static version
+# Quizly
 
-Plain HTML, CSS and ES modules. No build step, no dependencies.
+A live, presenter-paced quiz in the style of Kahoot. The presenter puts the host
+screen on the projector; the room joins on their phones by scanning a QR code or
+typing a PIN; everyone sees the same question at the same moment; the server keeps
+score; a leaderboard follows every question and a podium closes the game.
+
+Built for rooms of fifty or sixty people and tested well past that (see
+[Capacity](#capacity)). Plain HTML, CSS and JavaScript in the browser — no build
+step, no framework — an Express API, and Postgres.
+
+## What is in it
+
+- **Host screen** (`/host`) — pick a quiz, show the QR code, PIN and the names
+  arriving, then run the game with one button: Next, the space bar, Enter, → or a
+  presentation clicker. `F` for full screen, `M` for sound, `L` to lock the game.
+- **Phones** (`/`) — join with the PIN (the QR code fills it in), pick a nickname and
+  an avatar, answer, see each result, your rank and how far you are behind the person
+  ahead. A refresh or a locked screen loses nothing.
+- **Live leaderboard** (`/board#PIN`) — for a second screen: the QR code while people
+  join, then standings that slide into their new order after every question.
+- **Admin** (`/admin`) — a library of quizzes: write and edit questions, settings per
+  quiz, import and export quiz files, and the results of every game played, with a CSV
+  for the spreadsheet afterwards.
+- **Gamification** — a speed bonus, answer streaks with a growing bonus (🔥), rank
+  movement (▲▼), a 3-2-1 lead-in, sound cues, haptics on Android, confetti, a podium
+  that rises third–second–first, end-of-game awards (⚡ fastest finger, 🔥 longest
+  streak, 📈 comeback since half-time) and badges on each phone (🏆 💯 …).
+
+## Layout
 
 ```
-data/questions.json     the question bank and round settings — the only data file
-shared/quiz.js          load / save / normalise / scoring helpers
-client/index.html       player
-client/js/player.js     player logic
-client/admin.html       admin panel
-client/js/admin.js      admin logic
-client/css/styles.css   shared styles
-client/favicon.ico      the icon both pages link
+api/index.js          Vercel's entry point: exports the Express app
+server/               the API
+  app.js              routes, security headers, error handling
+  play.js             the live game: joining, the clock, answers, scoring, the reveal, awards
+  quizzes.js          the quiz library
+  results.js          past games, standings, CSV
+  auth.js             admin sign-in: a signed HttpOnly cookie
+  db.js               Postgres pool and migrations
+  migrations/         SQL, applied in order by `npm run build` / `npm run db:migrate`
+  config.js, net.js, errors.js, index.js (the standalone server)
+shared/quiz.js        rules both sides use: validation, scoring, streaks, nicknames
+client/               the browser: four pages, their scripts, the stylesheet, the favicon
+data/questions.json   a ready-made AI quiz in the import format — not read at runtime
+scripts/              build, migrate, seed, load-test, abuse-test
+test/                 rules and full-API tests (node --test)
+neon.ts               the Neon project's branch policy, applied with `neon deploy`
+vercel.json           build, rewrites, region and security headers for Vercel
+assets/               presentation images; not part of the app and not deployed
 ```
 
-## Running it
+## How it works
 
-The pages fetch `data/questions.json`, so a browser opened on `file://` will block it.
-Serve the repository root, so `client/`, `shared/` and `data/` are all reachable:
+Every quiz, game, player and answer lives in Postgres. Nothing is kept in a server's
+memory between requests, which is what lets it run as a Vercel Function: any instance
+can answer any request.
+
+Vercel cannot hold a WebSocket open, so screens **poll**: each asks for the game's
+shared state about once a second. That state is the same for everyone, so Vercel's CDN
+answers most of those requests from cache (`s-maxage=1`) and each function instance
+also reuses it for half a second — sixty phones cost the database a couple of queries a
+second. A phone fetches its own private view (its answer, its result, its rank) only
+when the game moves to a new screen.
+
+**Timing is fair even though polling is not instant.** A question opens with a
+three-second lead-in, and its clock is two absolute timestamps. Every screen corrects for
+its own clock's error against the server's and counts down to the same instant, so the
+options open on every phone at once whether that phone polled a moment ago or not.
+Points are worked out on the server from the server's clock; a phone may claim back up to
+0.6 s of network delay, never more.
+
+**The correct answer never leaves the server before the reveal** — not to phones, not to
+the projector. Scores only change at the reveal, so nothing on any screen gives an answer
+away while the clock runs. The first request to notice that a question's time is up closes
+it; row locks make sure exactly one request does, and that no answer slips in afterwards.
+
+## Running it locally
+
+Needs Node 22.9 or later, and a Postgres: a Neon branch, or Docker for a local one.
 
 ```
-npx serve .
-# or
-python3 -m http.server 8000
+cp .env.example .env               # then set ADMIN_PASSWORD and SESSION_SECRET
+neon env pull                      # Neon: writes DATABASE_URL and DATABASE_URL_UNPOOLED into .env
+# or: docker compose up -d         # a local Postgres on localhost:5435, as .env.example says
+npm install
+npm run db:seed                    # migrates, then imports data/questions.json as "AI Quiz"
+npm run dev                        # http://localhost:3000
 ```
 
-Then open `/client/` at the printed address. `index.html` is the quiz, `admin.html` is the panel.
+`npm test` drops and rebuilds the schema of its own database, so it runs against the
+Docker one (`docker compose up -d`) and refuses any other host.
 
-## How the data flows
+Open `/host` and sign in with `ADMIN_PASSWORD`. The QR code on a laptop points at the
+laptop's address on the network, so phones on the same Wi-Fi can join — if the network
+allows devices to reach each other, which office and guest networks often do not. For an
+event, deploy it.
 
-`questions.json` is the source of truth. The admin panel writes edits to
-`localStorage` under `ai-quiz:data:v1`, which overrides the file for that browser
-only. Use **Import & export → Download questions.json** to turn your edits back
-into a file, and **Discard local edits** to go back to the shipped bank.
+## Deploying to Vercel with Neon
 
-That override exists so the panel is useful before you have a backend. It is the
-first thing to remove when you wire one up.
+1. Import the repository in Vercel (framework preset: **Other** — `vercel.json` sets
+   everything else).
+2. Attach the Neon database (Storage → Neon). It sets `DATABASE_URL`, the pooled connection
+   (host ending `-pooler`) that the app uses, and `DATABASE_URL_UNPOOLED`, the direct one that
+   migrations use: PgBouncer's transaction pooling cannot hold the session a migration needs.
+3. Add `ADMIN_PASSWORD` (16+ characters: `openssl rand -base64 24`) and `SESSION_SECRET`
+   (`openssl rand -hex 32`) for Production.
+4. Deploy. The build assembles the static site and applies the migrations.
+5. Import a quiz: Admin → Import & export → *Import as a new quiz* with
+   `data/questions.json`, or run `npm run db:seed` locally with the production
+   `DATABASE_URL`.
 
-## Question shape
+Functions run in `cle1` (Cleveland), next to a Neon database in AWS `us-east-2`: each
+request makes several database round trips, so the function belongs beside the database,
+not beside the audience. If the database is moved, move `regions` in `vercel.json` with it.
+
+QR codes point at the project's production domain. Set `PUBLIC_URL` to use a custom one.
+
+## Running the session
+
+The day before:
+- Deploy, sign in at `/admin`, import or check the quiz and its settings (questions per
+  game, seconds per question).
+- Rehearse against the live URL: `npm run load-test -- --url https://… --players 60`
+  plays a whole game with sixty simulated phones and checks every score. Delete the test
+  game from Admin → Results afterwards.
+
+On the day:
+- Deploy before people arrive and do not redeploy during the session.
+- Sign in on the presenter's laptop early: the session lasts 12 hours, so nothing in the room
+  can lock it out mid-game. Keep a phone hotspot in mind if the venue Wi-Fi struggles —
+  phones on mobile data reach the game just as well.
+- Open `/admin` a few minutes early: Neon wakes a sleeping database on the first query.
+- On the presenter's laptop open `/host`, create the game, press `F`.
+- Once everyone is in, press `L` to lock the game so nobody can add made-up players, then
+  Start. Click a name in the lobby or on the scoreboard to remove it.
+- Afterwards: Admin → Results has the standings and a CSV.
+
+## Quiz files
+
+A quiz is imported and exported as JSON — `data/questions.json` is one:
 
 ```json
 {
-  "id": "q01",
-  "category": "Fundamentals",
-  "difficulty": "easy",
-  "prompt": "What does the \"GPT\" in GPT stand for?",
-  "options": ["…", "…", "…", "…"],
-  "answer": 1,
-  "explanation": "Shown after the reveal."
+  "version": 1,
+  "title": "AI Quiz",
+  "settings": {
+    "questionsPerRound": 10, "secondsPerQuestion": 20,
+    "shuffleQuestions": true, "shuffleOptions": true,
+    "basePoints": 500, "speedBonus": 500, "streakBonus": 100
+  },
+  "questions": [{
+    "id": "q01", "category": "Fundamentals", "difficulty": "easy",
+    "prompt": "What does the \"GPT\" in GPT stand for?",
+    "options": ["…", "…", "…", "…"],
+    "answer": 1,
+    "explanation": "Shown after the reveal."
+  }]
 }
 ```
 
-`answer` is the index into `options`, counted from zero, and refers to the
-original order — option shuffling happens at play time and does not move it.
-Two to six options are supported.
+`answer` is the index into `options`, counted from zero. Two to six options. Options are
+shuffled once per game, so the projector and every phone show them in the same order.
 
-Settings: `questionsPerRound`, `secondsPerQuestion`, `shuffleQuestions`,
-`shuffleOptions`, `basePoints`, `speedBonus`. Score for a correct answer is
-`basePoints + speedBonus × (time remaining ÷ time allowed)`, so a fast answer is
-worth `basePoints + speedBonus` and one at the buzzer is worth `basePoints`.
+**Scoring.** A correct answer is worth `basePoints + speedBonus × time left ÷ time
+allowed`, plus `streakBonus` for each consecutive correct answer before it (at most five
+times): with the defaults, 500–1000 points, and +100, +200, … for a streak.
 
-## Porting to Next.js
+## Capacity
 
-Everything that touches storage lives in `store.js`. Replace `loadQuiz`,
-`loadDefaults`, `saveQuiz` and `clearLocal` with calls to your API routes and the
-rest of the app is unchanged. `shuffle`, `scoreFor` and `normalise` are pure and
-move across as they are.
+Measured on a laptop with `npm run load-test` (local Postgres, no CDN, so every poll
+reaches the server) — whole games of simulated phones that join over a few seconds, poll
+once a second, answer at human speed, and in part drop out or reload mid-game:
 
-A reasonable first schema:
+| phones | requests | failures | slowest endpoint p99 | answers in, every question |
+|---|---|---|---|---|
+| 60  | 13,801 (73/s)  | 0 | 12 ms | 60/60 |
+| 150 | 16,972 (5 questions)  | 0 | 11 ms | 150/150 |
+| 250 | 28,595 (5 questions)  | 0 | 11 ms | 250/250 |
 
-```
-Question(id, category, difficulty, prompt, options[], answerIndex, explanation)
-Setting(key, value)              — or a single JSON column
-Session(id, code, state, currentIndex, startedAt)
-Answer(sessionId, userId, questionId, pickedIndex, points, answeredAt)
-```
+In every run each phone's final score matched the points its reveals reported, and ranks
+ran 1…N with no gaps. `npm run abuse-test` passes 34 checks: forged and edited cookies,
+cross-site requests, token reuse across players, SQL injection, script injection in
+nicknames, prototype pollution, path traversal, oversized and malformed bodies, races
+(25 simultaneous answers from one phone → one counts; 30 simultaneous Next presses → one
+step; 20 simultaneous joins with one nickname → one wins), PIN and password guessing,
+and 2,000 polls at 13,000+ a second with the health check staying under 35 ms.
 
-Three things the static version cannot do, which are the reason to build the
-Next.js app:
+## Security
 
-- **A shared scoreboard.** Scoring here is per browser. You need `Answer` rows
-  server-side and a leaderboard query.
-- **Presenter-driven pacing.** Here each player moves at their own speed. A
-  `Session` row with `currentIndex`, pushed over SSE or websockets, gives you the
-  Kahoot behaviour where everyone sees the same question at once.
-- **Authentication on the admin panel.** `admin.html` is currently open to anyone
-  who knows the path. Put it behind auth before it goes anywhere public.
+- Admin and host routes need the admin password: a signed, HttpOnly, SameSite=Lax cookie.
+  State-changing requests must come from the app's own origin.
+- A player is a random 192-bit token, stored hashed and sent in a header, never a URL.
+- Strict Content-Security-Policy (scripts from the app only), no framing, `nosniff`.
+  Everything shown is escaped; nicknames are cleaned of control and direction characters.
+- Rate limits, shared by every instance, written for a room where everyone shares one
+  address: 20 wrong passwords per 15 minutes, 30 wrong PINs and 300 probes of missing games
+  per 10 minutes, and 300 successful joins per 10 minutes. Only failures and successes count,
+  so nobody can use up the room's allowance with requests that fail on purpose.
+- At most `MAX_PLAYERS` (100) per game, and the host can lock a game and remove anyone.
+- CSV exports cannot run as spreadsheet formulas.
+- `.env` and secrets are ignored by git and by Vercel uploads.
 
-Also worth doing server-side: keep `answerIndex` out of the payload sent to
-players until the reveal, and score the answer on the server. In this version the
-correct answers are in the client bundle, which is fine for a room at lunch and
-not fine for anything that counts.
+## Scripts
 
-## The bank
-
-18 questions in four categories: Fundamentals, Applied, Risk, Governance.
-Difficulty is tagged but not yet used for selection — a `where difficulty = …`
-filter is an easy addition in the admin panel.
+| | |
+|---|---|
+| `npm run dev` | the app with auto-reload, on `PORT` (3000) |
+| `npm start` | the app, for any Node host that is not Vercel |
+| `npm run build` | assembles `public/` for the CDN and applies migrations (Vercel's build) |
+| `npm run db:migrate` | applies migrations to `DATABASE_URL` |
+| `npm run db:seed [-- file.json]` | imports a quiz file as a new quiz |
+| `npm test` | rules and API tests against `TEST_DATABASE_URL` (default: the compose Postgres) |
+| `npm run load-test -- --url … --players 60` | plays a whole game with simulated phones |
+| `npm run abuse-test -- --url …` | attacks the app and checks it holds |

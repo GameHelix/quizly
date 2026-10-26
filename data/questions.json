@@ -1,0 +1,265 @@
+{
+  "version": 1,
+  "settings": {
+    "questionsPerRound": 5,
+    "secondsPerQuestion": 20,
+    "shuffleQuestions": true,
+    "shuffleOptions": true,
+    "basePoints": 500,
+    "speedBonus": 500
+  },
+  "questions": [
+    {
+      "id": "q01",
+      "category": "Fundamentals",
+      "difficulty": "easy",
+      "prompt": "What does the \"GPT\" in GPT stand for?",
+      "options": [
+        "General Processing Tool",
+        "Generative Pre-trained Transformer",
+        "Guided Prompt Technology",
+        "Global Pattern Tracker"
+      ],
+      "answer": 1,
+      "explanation": "Generative (it produces output), Pre-trained (trained on large text corpora before you ever use it), Transformer (the neural network architecture underneath)."
+    },
+    {
+      "id": "q02",
+      "category": "Fundamentals",
+      "difficulty": "medium",
+      "prompt": "The transformer architecture behind modern language models was introduced in a 2017 paper called:",
+      "options": [
+        "Deep Residual Learning",
+        "Attention Is All You Need",
+        "Generative Adversarial Networks",
+        "Language Models Are Few-Shot Learners"
+      ],
+      "answer": 1,
+      "explanation": "\"Attention Is All You Need\" (Vaswani et al., 2017) introduced the transformer. Nearly every large language model in use today descends from it."
+    },
+    {
+      "id": "q03",
+      "category": "Fundamentals",
+      "difficulty": "easy",
+      "prompt": "In language-model terms, a \"token\" is closest to:",
+      "options": [
+        "One complete sentence",
+        "One letter",
+        "A chunk of text, often part of a word",
+        "One paragraph"
+      ],
+      "answer": 2,
+      "explanation": "Models read and write in tokens, which are word fragments. A long word may be several tokens; a common short word is usually one."
+    },
+    {
+      "id": "q04",
+      "category": "Fundamentals",
+      "difficulty": "easy",
+      "prompt": "A model's \"context window\" refers to:",
+      "options": [
+        "How much text it can consider at one time",
+        "How long it has been in production",
+        "The screen area the chat occupies",
+        "The number of users it can serve at once"
+      ],
+      "answer": 0,
+      "explanation": "Everything the model is working with — your instructions, attached documents, the conversation so far — competes for the same window. Once it is full, the earliest material falls out of view."
+    },
+    {
+      "id": "q05",
+      "category": "Fundamentals",
+      "difficulty": "medium",
+      "prompt": "Raising the \"temperature\" setting on a model does what?",
+      "options": [
+        "Makes it answer faster",
+        "Makes its output more varied and less predictable",
+        "Increases the factual accuracy",
+        "Expands the context window"
+      ],
+      "answer": 1,
+      "explanation": "Temperature controls how much randomness is allowed when picking the next token. Low values give repeatable, conservative output; high values give variety, and more risk of drift."
+    },
+    {
+      "id": "q06",
+      "category": "Fundamentals",
+      "difficulty": "medium",
+      "prompt": "\"Multimodal\" describes a model that:",
+      "options": [
+        "Runs in several data centres",
+        "Can be fine-tuned more than once",
+        "Works with more than one kind of input, such as text and images",
+        "Supports several languages"
+      ],
+      "answer": 2,
+      "explanation": "Modalities are kinds of data: text, images, audio, video. A multimodal model handles more than one, so it can read a floor plan or a scanned lease rather than only typed text."
+    },
+    {
+      "id": "q07",
+      "category": "Fundamentals",
+      "difficulty": "medium",
+      "prompt": "A model's \"training data cutoff\" means:",
+      "options": [
+        "The point where training was stopped to save cost",
+        "The date after which it has no built-in knowledge of events",
+        "The maximum size of a document it will accept",
+        "The limit on how many questions you may ask"
+      ],
+      "answer": 1,
+      "explanation": "Anything after the cutoff is unknown to the model unless you give it the information or connect it to a live source. This is why a confident answer about recent events deserves checking."
+    },
+    {
+      "id": "q08",
+      "category": "Applied",
+      "difficulty": "medium",
+      "prompt": "Retrieval-augmented generation (RAG) mainly solves which problem?",
+      "options": [
+        "The model is too slow",
+        "The model does not know your private or current documents",
+        "The model uses too much electricity",
+        "The model cannot write code"
+      ],
+      "answer": 1,
+      "explanation": "RAG fetches relevant passages from your own content and puts them in the context window before the model answers. The model is not retrained; it is simply handed the right material."
+    },
+    {
+      "id": "q09",
+      "category": "Applied",
+      "difficulty": "medium",
+      "prompt": "Fine-tuning differs from prompting because fine-tuning:",
+      "options": [
+        "Changes the model itself by training it further on examples",
+        "Gives the model more time to think",
+        "Is a different word for writing a longer prompt",
+        "Only works on open-source models"
+      ],
+      "answer": 0,
+      "explanation": "Prompting shapes one conversation; fine-tuning adjusts the model's weights using example pairs, so the behaviour persists. It is far more expensive, and for most business problems prompting or RAG gets there first."
+    },
+    {
+      "id": "q10",
+      "category": "Applied",
+      "difficulty": "hard",
+      "prompt": "Which best describes an AI \"agent\" rather than a chatbot?",
+      "options": [
+        "It responds faster",
+        "It takes actions toward a goal, not just produces text",
+        "It runs on the user's own device",
+        "It has a larger context window"
+      ],
+      "answer": 1,
+      "explanation": "An agent can call tools, read and write systems, and chain several steps together. The practical consequence is that the review step moves from every output to a sample."
+    },
+    {
+      "id": "q11",
+      "category": "Applied",
+      "difficulty": "hard",
+      "prompt": "Prompt injection is an attack where:",
+      "options": [
+        "Someone guesses your password from a prompt",
+        "Instructions hidden in content the model reads cause it to misbehave",
+        "Too many prompts are sent at once to overload the service",
+        "The model is trained on poisoned data"
+      ],
+      "answer": 1,
+      "explanation": "If a model reads a web page, email or document, text inside that content can pose as instructions. It matters far more once the model can act, because a bad instruction then has consequences beyond a wrong answer."
+    },
+    {
+      "id": "q12",
+      "category": "Risk",
+      "difficulty": "easy",
+      "prompt": "\"Hallucination\" in this context means the model:",
+      "options": [
+        "Crashes unexpectedly",
+        "Refuses to answer",
+        "States something false with complete confidence",
+        "Repeats the same answer twice"
+      ],
+      "answer": 2,
+      "explanation": "The output is fluent, well-formatted and wrong. Fluency is exactly what makes it hard to catch, which is why fact-bearing output needs a reviewer who knows the subject."
+    },
+    {
+      "id": "q13",
+      "category": "Risk",
+      "difficulty": "easy",
+      "prompt": "The main risk of pasting internal documents into a personal, unapproved AI account is:",
+      "options": [
+        "The answer will be lower quality",
+        "Company data leaves your control and your retention rules",
+        "It uses more of your mobile data",
+        "The file may be reformatted"
+      ],
+      "answer": 1,
+      "explanation": "Once the content sits in an account the organisation does not administer, nobody can say where it is stored, how long it is kept, or who else can reach it."
+    },
+    {
+      "id": "q14",
+      "category": "Risk",
+      "difficulty": "medium",
+      "prompt": "\"Shadow AI\" refers to:",
+      "options": [
+        "Models that run without internet access",
+        "Employees using AI tools the organisation has not approved",
+        "A backup model that takes over on failure",
+        "AI used to detect other AI"
+      ],
+      "answer": 1,
+      "explanation": "It is worth measuring rather than punishing. A large gap between the sanctioned tools and the used ones usually means the sanctioned ones are not good enough or not available."
+    },
+    {
+      "id": "q15",
+      "category": "Governance",
+      "difficulty": "medium",
+      "prompt": "An AI incident log with zero entries after a year of real use most likely means:",
+      "options": [
+        "The deployment is working flawlessly",
+        "Nobody is recording incidents",
+        "The use cases are too simple to fail",
+        "Staff are satisfied with the tools"
+      ],
+      "answer": 1,
+      "explanation": "A clean log is nearly always a reporting gap rather than a safety record. The first useful governance metric is whether anyone has anywhere to report a problem."
+    },
+    {
+      "id": "q16",
+      "category": "Governance",
+      "difficulty": "medium",
+      "prompt": "If an AI tool drafts a clause that turns out to be wrong, accountability sits with:",
+      "options": [
+        "The model vendor",
+        "The person and organisation that used and relied on the output",
+        "Nobody, since the output was automated",
+        "The employee who wrote the prompt, personally"
+      ],
+      "answer": 1,
+      "explanation": "Across essentially every governance framework, using an output is adopting it. Vendor terms disclaim it, and \"the system produced it\" has never been a defence."
+    },
+    {
+      "id": "q17",
+      "category": "Governance",
+      "difficulty": "hard",
+      "prompt": "Before deploying AI to a process, the most commonly skipped step is:",
+      "options": [
+        "Choosing the right model",
+        "Measuring how the process performs today",
+        "Writing a prompt library",
+        "Negotiating the licence"
+      ],
+      "answer": 1,
+      "explanation": "Without a baseline captured beforehand, every efficiency claim afterwards is an estimate. It is the cheapest step and the one that makes every later number defensible."
+    },
+    {
+      "id": "q18",
+      "category": "Governance",
+      "difficulty": "easy",
+      "prompt": "The strongest reason to keep a human review step on AI output is that models:",
+      "options": [
+        "Work slowly without supervision",
+        "Fail in ways that look plausible",
+        "Cannot format documents correctly",
+        "Need approval for legal reasons only"
+      ],
+      "answer": 1,
+      "explanation": "A calculator fails loudly and obviously. A language model fails smoothly, in well-written prose, which means detecting the failure takes roughly the expertise the tool was meant to save."
+    }
+  ]
+}

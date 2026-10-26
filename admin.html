@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI Quiz — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap wide">
+  <div class="row">
+    <div>
+      <p class="eyebrow">AI Quiz</p>
+      <h1 style="margin-bottom:6px">Admin panel</h1>
+    </div>
+    <a class="sub" href="index.html" style="color:var(--muted)">Open the quiz</a>
+  </div>
+
+  <nav class="tabs">
+    <button data-tab="questions" class="on">Questions</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="data">Import &amp; export</button>
+  </nav>
+
+  <section id="tab-questions">
+    <div class="bar" style="margin-bottom:20px">
+      <button id="add">Add question</button>
+      <select id="filter" style="width:auto"><option value="">All categories</option></select>
+      <span class="pill" id="count"></span>
+      <span class="pill" id="dirty"></span>
+    </div>
+    <div id="editor" class="card hidden" style="margin-bottom:24px"></div>
+    <div id="list"></div>
+  </section>
+
+  <section id="tab-settings" class="hidden">
+    <div class="card">
+      <div class="grid2">
+        <div class="field">
+          <label for="s-count">Questions per round</label>
+          <input type="number" id="s-count" min="1" max="50">
+        </div>
+        <div class="field">
+          <label for="s-secs">Seconds per question</label>
+          <input type="number" id="s-secs" min="5" max="120">
+        </div>
+        <div class="field">
+          <label for="s-base">Base points for a correct answer</label>
+          <input type="number" id="s-base" min="0" max="5000">
+        </div>
+        <div class="field">
+          <label for="s-bonus">Maximum speed bonus</label>
+          <input type="number" id="s-bonus" min="0" max="5000">
+        </div>
+        <div class="field">
+          <label for="s-shq">Shuffle questions</label>
+          <select id="s-shq"><option value="yes">Yes</option><option value="no">No</option></select>
+        </div>
+        <div class="field">
+          <label for="s-sho">Shuffle answer options</label>
+          <select id="s-sho"><option value="yes">Yes</option><option value="no">No</option></select>
+        </div>
+      </div>
+      <button id="save-settings">Save settings</button>
+    </div>
+  </section>
+
+  <section id="tab-data" class="hidden">
+    <div class="card" style="margin-bottom:16px">
+      <h3>Export</h3>
+      <p class="note">Downloads the current bank as <code>questions.json</code>. Drop it back into the project folder to make your edits the new default, or import it into your Next.js app.</p>
+      <button id="export">Download questions.json</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Import</h3>
+      <p class="note">Replaces everything currently loaded with the contents of a JSON file in the same shape.</p>
+      <input type="file" id="import" accept="application/json,.json">
+    </div>
+    <div class="card">
+      <h3>Reset</h3>
+      <p class="note">Discards local edits and goes back to the questions.json shipped in the folder.</p>
+      <button class="danger" id="reset">Discard local edits</button>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+<script type="module" src="admin.js"></script>
+</body>
+</html>

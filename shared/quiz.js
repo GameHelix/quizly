@@ -1,6 +1,6 @@
 /* Shared data layer for the player and the admin panel.
  *
- * Source of truth is questions.json. The admin panel saves edits to
+ * Source of truth is data/questions.json. The admin panel saves edits to
  * localStorage, which overrides the file until it is reset or exported.
  * When you port this to Next.js, replace loadQuiz/saveQuiz with calls to
  * your API route; nothing else in the app touches storage.
@@ -11,13 +11,13 @@ const STORAGE_KEY = "ai-quiz:data:v1";
 export async function loadQuiz() {
   const local = readLocal();
   if (local) return local;
-  const res = await fetch("questions.json", { cache: "no-store" });
+  const res = await fetch("../data/questions.json", { cache: "no-store" });
   if (!res.ok) throw new Error("Could not load questions.json (" + res.status + ")");
   return normalise(await res.json());
 }
 
 export async function loadDefaults() {
-  const res = await fetch("questions.json", { cache: "no-store" });
+  const res = await fetch("../data/questions.json", { cache: "no-store" });
   if (!res.ok) throw new Error("Could not load questions.json (" + res.status + ")");
   return normalise(await res.json());
 }

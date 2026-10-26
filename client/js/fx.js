@@ -14,7 +14,7 @@ export function confetti(ms = 3000, amount = 180) {
   const dpr = window.devicePixelRatio || 1;
   const w = (canvas.width = innerWidth * dpr);
   const h = (canvas.height = innerHeight * dpr);
-  const colors = ["#d4584e", "#3f7fc4", "#d99a2b", "#4f9d69", "#8b6cc4", "#f4f1ea"];
+  const colors = ["#cc4b41", "#3a78bd", "#d99a2b", "#3f8a58", "#8160bf", "#23867a", "#17191e"];
   const pieces = Array.from({ length: amount }, () => ({
     x: Math.random() * w,
     y: -Math.random() * h * 0.6,

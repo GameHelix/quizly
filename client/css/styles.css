@@ -285,7 +285,7 @@ body.host { overflow-x: hidden; }
 .lobby { display: grid; grid-template-columns: minmax(300px, 460px) 1fr; gap: clamp(20px, 3vw, 48px); align-items: start; flex: 1; }
 @media (max-width: 860px) { .lobby { grid-template-columns: 1fr; } }
 .joincard { background: var(--ink-2); border: 1px solid var(--line); border-radius: 22px; padding: clamp(18px, 2vw, 30px); text-align: center; }
-.joincard .url { font-size: clamp(20px, 2.2vw, 30px); font-weight: 600; margin: 4px 0 16px; word-break: break-all; }
+.joincard .url { font-size: clamp(16px, 1.6vw, 26px); font-weight: 600; margin: 4px 0 16px; overflow-wrap: anywhere; }
 .qr { background: #fff; border-radius: 16px; padding: 10px; width: min(100%, 340px); aspect-ratio: 1; display: block; margin: 0 auto 16px; }
 .pin { font-size: clamp(40px, 4.4vw, 76px); font-weight: 800; letter-spacing: .04em; line-height: 1; margin: 6px 0 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .warn { background: #3a2a12; border: 1px solid var(--amber); border-radius: 12px; padding: 12px 14px; font-size: 14px; text-align: left; margin-top: 16px; }

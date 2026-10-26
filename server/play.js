@@ -388,6 +388,13 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
     v.me = { id: p.id, nickname: p.nickname, avatar: p.avatar, score: p.score, streak: p.streak };
     if (game.status === "abandoned") return v;
 
+    // The phone's trail of dots: one per revealed question, right, wrong or unanswered.
+    if (game.closedCount > 0) {
+      const { rows } = await pool.query(
+        "select question_index, correct from answers where player_id = $1 and question_index < $2", [p.id, game.closedCount]);
+      v.history = Array.from({ length: game.closedCount }, () => null);
+      for (const r of rows) v.history[r.question_index] = r.correct;
+    }
     if (game.phase === "question" || game.phase === "reveal") {
       const { rows: [a] } = await pool.query(
         "select choice, correct, bonus from answers where player_id = $1 and question_index = $2", [p.id, game.index]);
@@ -416,6 +423,8 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
         v.final = {
           correct: p.correct_count,
           played: game.closedCount,
+          bestStreak: p.best_streak,
+          avgCorrectMs: p.correct_count ? Math.round(Number(p.correct_ms) / p.correct_count) : null,
           podium: board(players, 3),
           badges: badgesFor(p, at + 1, game.closedCount, game.awards ?? [])
         };

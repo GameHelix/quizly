@@ -115,6 +115,14 @@ export function buzz(pattern) {
   }
 }
 
+/* Gives el a quick swell — a number that just went up. */
+export function bump(el) {
+  if (!el) return;
+  el.classList.remove("bump");
+  void el.offsetWidth;   // restart the animation
+  el.classList.add("bump");
+}
+
 /* Counts el's number from `from` up to `to`. */
 export function countUp(el, from, to, ms = 900) {
   if (!el) return;

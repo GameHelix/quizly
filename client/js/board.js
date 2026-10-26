@@ -5,6 +5,7 @@
  */
 
 import { confetti } from "./fx.js";
+import { brand, footer, icon, siteHeader, trophyArt } from "./design.js";
 import { renderBoard } from "./leaderboard.js";
 import { getState, poll } from "./live.js";
 import { $, escapeHtml, fitToScreen, keepFitting, plural } from "./ui.js";
@@ -14,6 +15,7 @@ let poller = null;
 let drawn = "";
 let boardJson = "";
 let celebrated = false;
+let rosterJson = "";
 
 keepFitting();
 open();
@@ -24,6 +26,7 @@ function open() {
   drawn = "";
   boardJson = "";
   celebrated = false;
+  rosterJson = "";
   const pin = location.hash.slice(1);
   if (!/^\d{6}$/.test(pin)) return ask();
   poller = poll(async () => show(await getState(`/api/games/${pin}`)), 1500, {
@@ -37,22 +40,23 @@ function ask(message = "") {
   poller?.stop();
   drawn = "";
   app.innerHTML = `
-    <div class="wrap narrow">
-      <p class="eyebrow">Quizly</p>
-      <h1>Live leaderboard</h1>
-      <form class="card" id="ask">
+    ${siteHeader("board")}<div class="board-entry">
+      <div><span class="intro-tag">${icon("trophy")} Every point has a story</span><h1>Who's bringing<br>their A-game?</h1><p class="sub">Follow the friendly rivalry, the comeback moments,<br>and the climb to the top. Live, as it happens.</p>${trophyArt()}</div>
+      <form class="card" id="ask" novalidate><span class="panel-icon" style="margin-bottom:20px">${icon("trophy")}</span><h2>Get the room buzzing.</h2><p class="sub" style="font-size:13px">Enter a game PIN to follow the standings.</p>
         <div class="field">
           <label for="pin">Game PIN</label>
-          <input id="pin" inputmode="numeric" maxlength="7" placeholder="123 456" autofocus>
+          <input class="pin-input" id="pin" inputmode="numeric" maxlength="7" placeholder="123 456" aria-describedby="board-error" autofocus>
         </div>
-        <button type="submit" class="big">Show the leaderboard</button>
-        <p class="err" role="alert">${escapeHtml(message)}</p>
+        <button type="submit" class="big">Show the leaderboard ${icon("arrow")}</button>
+        <p class="err" id="board-error" role="alert">${escapeHtml(message)}</p><p class="join-footnote">${icon("check")} A front-row seat. No sign-in needed.</p>
       </form>
-    </div>`;
+    </div>${footer()}`;
   $("ask").onsubmit = e => {
     e.preventDefault();
     const pin = $("pin").value.replace(/\D/g, "");
-    if (pin.length !== 6) return;
+    if (pin.length !== 6) { $("board-error").textContent = "Enter the six-digit PIN from the host's screen."; $("pin").setAttribute("aria-invalid", "true"); $("pin").focus(); return; }
+    $("pin").removeAttribute("aria-invalid");
+    $("ask").querySelector('button[type="submit"]').textContent = "Finding your game…";
     history.replaceState(null, "", `#${pin}`);
     open();
   };
@@ -65,8 +69,9 @@ function show(game) {
     : `Question ${game.index + 1} of ${game.total}`;
   const head = `
     <div class="hbar">
-      <p class="eyebrow">${escapeHtml(game.title)}</p><span class="grow"></span>
+      ${brand()}<p class="eyebrow">${escapeHtml(game.title)}</p><span class="grow"></span>
       <span class="pill" id="where"></span><span class="pill" id="players"></span>
+      <a href="/board" class="sub" style="font-size:11px">Switch game</a>
     </div>`;
 
   if (game.phase === "lobby") {
@@ -82,11 +87,13 @@ function show(game) {
             <p class="eyebrow">Game PIN</p>
             <p class="pin">${game.pin.slice(0, 3)} ${game.pin.slice(3)}</p>
           </section>
-          <section><div class="chips" id="chips"></div></section>
+          <section><span class="live-label">GOOD COMPANY IS JOINING</span><h1 class="lobby-heading">Meet your competition.</h1><p class="sub">Find your game face. The host will start when everyone's ready.</p><div class="chips" id="chips"></div></section>
         </div>
       </div>`);
     const chips = $("chips");
-    if (chips.children.length !== (game.roster || []).length) {
+    const signature = JSON.stringify(game.roster || []);
+    if (signature !== rosterJson) {
+      rosterJson = signature;
       chips.replaceChildren(...(game.roster || []).map(p => {
         const chip = document.createElement("span");
         chip.className = "chip";
@@ -99,12 +106,14 @@ function show(game) {
     draw("board", () => `
       <div class="stage">
         ${head}
-        <h1 class="hq">Leaderboard</h1>
+        <h1 class="hq" id="board-title">A little friendly rivalry.</h1><div class="board-column-head"><span>The leaderboard</span><span>Points</span></div>
         <ol class="board" id="board"></ol>
         <div class="awards" id="awards"></div>
         <p class="note" id="empty"></p>
+        <p class="spectator-note">${icon("bolt")} Every question is a chance to climb. Keep playing.</p>
       </div>`);
     const rows = game.leaderboard || [];
+    $("board-title").textContent = game.phase === "final" ? "The final bragging rights." : "A little friendly rivalry.";
     const json = JSON.stringify(rows);
     if (json !== boardJson) {
       boardJson = json;

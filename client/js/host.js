@@ -7,10 +7,11 @@
  */
 
 import { LETTERS } from "/shared/quiz.js";
+import { brand, footer, icon, progressRail, siteHeader, trophyArt } from "./design.js";
 import { bump, confetti, sound } from "./fx.js";
 import { renderBoard } from "./leaderboard.js";
 import { clock, getState, poll } from "./live.js";
-import { $, adminGate, api, escapeHtml, fitToScreen, fmt, keepAwake, keepFitting, plural, toast } from "./ui.js";
+import { $, adminGate, api, askDialog, copyText, escapeHtml, fitToScreen, fmt, keepAwake, keepFitting, plural, toast } from "./ui.js";
 
 const app = $("app");
 let game = null;
@@ -44,17 +45,16 @@ async function renderCreate() {
   try {
     quizzes = await api("/api/host/quizzes");
   } catch (err) {
-    app.innerHTML = `<div class="wrap"><p class="eyebrow">Quizly</p><h1>Could not load the quizzes</h1><p class="sub">${escapeHtml(err.message)}</p></div>`;
+    app.innerHTML = `${siteHeader("host")}<div class="wrap"><p class="eyebrow">Let's try that again</p><h1>Couldn't load your quizzes</h1><p class="sub">${escapeHtml(err.message)}</p><button id="retry">Try again</button></div>`;
+    $("retry").onclick = renderCreate;
     return;
   }
   const playable = quizzes.filter(q => q.questions > 0);
   if (!playable.length) {
     app.innerHTML = `
-      <div class="wrap">
-        <p class="eyebrow">Quizly</p>
-        <h1>No quizzes to play yet</h1>
-        <p class="sub">Create a quiz or import a quiz file in the <a href="/admin">admin panel</a>, then come back here.</p>
-      </div>`;
+      ${siteHeader("host")}<div class="wrap narrow"><div class="empty-state">${icon("book")}<h1>Your next great game starts here.</h1>
+        <p>Create your first quiz or import a quiz file in the studio, then invite your people.</p><a class="btn" href="/admin" style="margin-top:24px">Open quiz studio ${icon("arrow")}</a>
+      </div></div>${footer()}`;
     return;
   }
   let remembered = null;
@@ -64,14 +64,13 @@ async function renderCreate() {
     // storage blocked: start from the first quiz
   }
   app.innerHTML = `
-    <div class="wrap">
-      <div class="row">
-        <div><p class="eyebrow">Quizly</p><h1>Host a game</h1></div>
-        <span class="bar"><a class="sub" href="/admin">Admin panel</a></span>
-      </div>
-      <form class="card" id="create">
+    ${siteHeader("host")}<div class="wrap wide"><div class="setup-layout">
+      <section class="setup-copy"><span class="intro-tag">${icon("play")} The room is yours</span><h1>Great company.<br>Even better competition.</h1>
+        <p class="sub">Pick a quiz. Gather your people. We'll take care of the countdowns, the points, and the big finish.</p><div class="hero-art">${trophyArt()}</div>
+        <div class="key-hints"><span><kbd>F</kbd> Full screen</span><span><kbd>M</kbd> Sound</span><span><kbd>→</kbd> Next step</span></div></section>
+      <form class="card setup-form" id="create"><span class="panel-icon" style="margin-bottom:18px">${icon("grid")}</span><h2>Set up your game</h2><p class="sub">Your lobby opens first. Start when everyone's in.</p>
         <div class="field">
-          <label for="quiz">Quiz</label>
+          <label for="quiz">Choose your quiz</label>
           <select id="quiz">
             ${playable.map(q => `<option value="${escapeHtml(q.id)}"${q.id === remembered ? " selected" : ""}>${escapeHtml(q.title)}</option>`).join("")}
           </select>
@@ -80,13 +79,11 @@ async function renderCreate() {
           <label for="category">Questions from</label>
           <select id="category"></select>
         </div>
-        <p class="sub" id="summary"></p>
-        <button type="submit" class="big" id="create-btn">Create game</button>
+        <div class="setup-summary">${icon("book")}<span id="summary"></span></div>
+        <button type="submit" class="big" id="create-btn">Open the lobby ${icon("arrow")}</button>
         <p class="err" id="create-err" role="alert"></p>
-      </form>
-      <p class="note" style="margin-top:16px">On the game screen: <b>F</b> full screen, <b>M</b> sound on or off,
-        and <b>Space</b>, <b>Enter</b>, <b>→</b> or a presentation clicker for Next.</p>
-    </div>`;
+        <p class="join-footnote">${icon("users")} Players join with a PIN or QR code.</p>
+      </form></div></div>${footer()}`;
 
   const fill = () => {
     const q = playable.find(x => x.id === $("quiz").value);
@@ -101,6 +98,7 @@ async function renderCreate() {
     e.preventDefault();
     sound.unlock();
     $("create-btn").disabled = true;
+    $("create-btn").textContent = "Opening your lobby…";
     try {
       localStorage.setItem("quizly:quiz", $("quiz").value);
     } catch {
@@ -113,6 +111,7 @@ async function renderCreate() {
     } catch (err) {
       $("create-err").textContent = err.message;
       $("create-btn").disabled = false;
+      $("create-btn").innerHTML = `Open the lobby ${icon("arrow")}`;
     }
   };
 }
@@ -164,7 +163,7 @@ function lobby() {
   const local = url.hostname === "localhost" || url.hostname.startsWith("127.");
   draw(`lobby:${game.pin}`, () => `
     <div class="stage ambient">
-      <div class="hbar"><p class="eyebrow">${escapeHtml(game.title)}</p><span class="grow"></span>${toolbar()}</div>
+      <div class="hbar">${brand()}<span class="pill">${escapeHtml(game.title)}</span><span class="grow"></span>${toolbar()}</div>
       <div class="lobby">
         <section class="joincard">
           <p class="eyebrow">Scan to join</p>
@@ -173,21 +172,27 @@ function lobby() {
           <p class="url">${escapeHtml(url.host)}</p>
           <p class="eyebrow">and enter the game PIN</p>
           <p class="pin">${game.pin.slice(0, 3)} ${game.pin.slice(3)}</p>
-          ${local ? `<p class="warn">Phones cannot reach “localhost”. Open this page at this computer's network address, or set PUBLIC_URL.</p>` : ""}
+          <div class="join-actions"><button class="text-btn" id="copy-link">Copy invite link ${icon("arrow")}</button><a class="btn quiet" style="font-size:11px;min-height:32px;padding:6px 10px" href="/board#${game.pin}" target="_blank" rel="noopener">Open leaderboard ${icon("trophy")}</a></div>
         </section>
         <section class="stack">
+          <span class="live-label">THE LOBBY IS OPEN</span><h1 class="lobby-heading">The more, the merrier.</h1>
           <div class="row">
-            <h1 style="margin:0"><span id="count">0</span> <span id="count-word">players</span></h1>
-            <button id="next" style="font-size:20px;padding:14px 34px">Start</button>
+            <h2 style="margin:0;font-size:28px"><span id="count">0</span> <span id="count-word">players</span> ready</h2>
+            <button id="next" style="font-size:18px;padding:14px 28px">Let's play ${icon("play")}</button>
           </div>
           <p class="sub" id="lobby-hint"></p>
           <div class="chips" id="chips"></div>
+          <div class="lobby-empty" id="lobby-empty">${icon("users")}<p>Good company is on the way.<br>Share the QR code or game PIN to get everyone in.</p></div>
+          <div class="mission-panel"><span class="mission-icon">${icon("bolt")}</span><div class="grow"><b>Bring your A-game</b><span>Think fast, build a streak, and climb the board.</span></div></div>
+          ${local ? `<p class="warn">To join on a phone, open the host screen using this computer's network address or share a deployed game link.</p>` : ""}
         </section>
       </div>
     </div>`);
   $("count").textContent = fmt(game.players);
   $("count-word").textContent = game.players === 1 ? "player" : "players";
   $("next").disabled = !game.players || busy;
+  $("lobby-empty").classList.toggle("hidden", !!game.players);
+  $("copy-link").onclick = () => copyText(game.joinUrl, "Invite link copied");
   $("lobby-hint").textContent = game.locked
     ? "Locked — nobody new can join. Press 🔒 or L to open it again."
     : game.players
@@ -215,8 +220,8 @@ function updateChips(roster) {
     chip.dataset.id = p.id;
     chip.title = "Remove from the game";
     chip.textContent = `${p.avatar} ${p.nickname}`;
-    chip.onclick = () => {
-      if (confirm(`Remove ${p.nickname} from the game?`)) act("kick", { playerId: p.id });
+    chip.onclick = async () => {
+      if (await askDialog({ title: `Remove ${p.nickname}?`, message: "They'll leave this game and their score will be removed from the standings.", confirmLabel: "Remove player", danger: true })) act("kick", { playerId: p.id });
     };
     box.append(chip);
   }
@@ -228,10 +233,12 @@ function question(key) {
   const fresh = draw(key, () => `
     <div class="stage">
       <div class="hbar">
+        ${brand()}
         <span class="pill">Question ${game.index + 1} of ${game.total}</span>
         ${q.category ? `<span class="pill">${escapeHtml(q.category)}</span>` : ""}
         <span class="grow"></span>${toolbar()}
       </div>
+      ${progressRail(game.index, game.total, game.phase)}
       <h1 class="hq">${escapeHtml(q.prompt)}</h1>
       <div class="clockrow">
         <div class="clock" id="clock"><span id="secs"></span></div>
@@ -301,6 +308,7 @@ function reveal(key) {
   draw(key, () => `
     <div class="stage">
       <div class="hbar">
+        ${brand()}
         <span class="pill">Question ${game.index + 1} of ${game.total}</span>
         <span class="grow"></span>${toolbar()}
       </div>
@@ -334,10 +342,11 @@ function scoreboard(key) {
   draw(key, () => `
     <div class="stage">
       <div class="hbar">
+        ${brand()}
         <span class="pill">After question ${game.index + 1} of ${game.total}</span>
         <span class="grow"></span>${toolbar()}
       </div>
-      <h1 class="hq">Scoreboard</h1>
+      <h1 class="hq">A little friendly rivalry.</h1><div class="board-column-head"><span>The leaderboard</span><span>Points</span></div>
       <ol class="board" id="board"></ol>
       <div class="hfoot">
         <button class="quiet" id="end">End game</button><span class="grow"></span>
@@ -347,10 +356,10 @@ function scoreboard(key) {
     renderBoard($("board"), (game.leaderboard || []).slice(0, 10));
     fitToScreen();
     // A name that should not be on a projector can go from here too.
-    $("board").onclick = e => {
+    $("board").onclick = async e => {
       const row = e.target.closest("li[data-id]");
       const name = row?.querySelector(".nm")?.textContent;
-      if (row && confirm(`Remove ${name} from the game?`)) act("kick", { playerId: row.dataset.id });
+      if (row && await askDialog({ title: `Remove ${name}?`, message: "This player will leave the game.", confirmLabel: "Remove player", danger: true })) act("kick", { playerId: row.dataset.id });
     };
   });
 }
@@ -367,7 +376,8 @@ function final(key) {
     : `<div class="place p${n}"></div>`);
   draw(key, () => `
     <div class="stage">
-      <div class="hbar"><p class="eyebrow">${escapeHtml(game.title)} · final results</p><span class="grow"></span>${toolbar()}</div>
+      <div class="hbar">${brand()}<p class="eyebrow">${escapeHtml(game.title)} · final results</p><span class="grow"></span>${toolbar()}</div>
+      <h1 class="hq small" style="text-align:center">Big brains. Well-earned bragging rights.</h1>
       <div class="podium">${place(lb[1], 2)}${place(lb[0], 1)}${place(lb[2], 3)}</div>
       ${game.awards?.length ? `
         <div class="awards">
@@ -406,12 +416,12 @@ function closed() {
   stop();
   drawn = "";
   app.innerHTML = `
-    <div class="wrap">
-      <p class="eyebrow">Quizly</p>
+    ${siteHeader("host")}<div class="wrap narrow"><div class="empty-state">
+      ${icon("flag")}
       <h1>Game closed</h1>
       <p class="sub">It ended before it started, so there are no results.</p>
-      <button id="again">New game</button>
-    </div>`;
+      <button id="again" style="margin-top:24px">Start a fresh game ${icon("arrow")}</button>
+    </div></div>${footer()}`;
   $("again").onclick = () => {
     history.replaceState(null, "", location.pathname);
     renderCreate();
@@ -440,15 +450,15 @@ async function act(action, body = {}) {
   }
 }
 
-function endGame() {
-  if (confirm("End the game now? The scores so far become the final results.")) act("end");
+async function endGame() {
+  if (await askDialog({ title: "Call it a game?", message: "The scores so far will become the final results.", confirmLabel: "End game", danger: true })) act("end");
 }
 
 function toolbar() {
   return `
     <button class="quiet" id="lock" title="Lock or open the game to new players (L)" aria-label="Lock"></button>
-    <button class="quiet" id="snd" title="Sound on or off (M)" aria-label="Sound">${sound.on ? "🔊" : "🔇"}</button>
-    <button class="quiet" id="fs" title="Full screen (F)" aria-label="Full screen">⛶</button>`;
+    <button class="quiet" id="snd" title="Sound on or off (M)" aria-label="Sound ${sound.on ? "On" : "Off"}" aria-pressed="${sound.on}">${icon("sound")}<span>${sound.on ? "On" : "Off"}</span></button>
+    <button class="quiet" id="fs" title="Full screen (F)" aria-label="Full screen">${icon("expand")}</button>`;
 }
 
 function wire() {
@@ -470,14 +480,16 @@ function toggleLock() {
 function syncLock() {
   const b = $("lock");
   if (!b || !game) return;
-  b.textContent = game.locked ? "🔒 Locked" : "🔓 Open";
+  b.innerHTML = `${icon("lock")} ${game.locked ? "Locked" : "Open"}`;
+  b.setAttribute("aria-label", game.locked ? "Locked. Open game to new players" : "Open. Lock game to new players");
+  b.setAttribute("aria-pressed", String(!!game.locked));
   b.classList.toggle("ghost", !!game.locked);
   b.classList.toggle("quiet", !game.locked);
 }
 
 function toggleSound() {
   const on = sound.toggle();
-  if ($("snd")) $("snd").textContent = on ? "🔊" : "🔇";
+  if ($("snd")) { $("snd").innerHTML = `${icon("sound")}<span>${on ? "On" : "Off"}</span>`; $("snd").setAttribute("aria-pressed", String(on)); $("snd").setAttribute("aria-label", `Sound ${on ? "On" : "Off"}`); }
   toast(on ? "Sound on" : "Sound off");
 }
 
@@ -487,7 +499,7 @@ function fullscreen() {
 }
 
 document.addEventListener("keydown", e => {
-  if (e.target.closest("input, select, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.repeat || document.querySelector("dialog[open]") || e.target.closest("input, select, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
   const onButton = e.target.closest("button, a");
   if (["Space", "Enter", "ArrowRight", "PageDown"].includes(e.code) && !onButton) {
     if (!game || game.phase === "final" || (game.phase === "lobby" && !game.players)) return;

@@ -2,6 +2,8 @@
  * sign-in gate and keeping a phone's screen awake.
  */
 
+import { footer, icon, siteHeader, trophyArt } from "./design.js";
+
 export const $ = id => document.getElementById(id);
 
 export function escapeHtml(s) {
@@ -31,6 +33,19 @@ export function toast(msg) {
   t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+export function announce(message) {
+  let region = $("announcer");
+  if (!region) {
+    region = document.createElement("div");
+    region.id = "announcer";
+    region.className = "sr-only";
+    region.setAttribute("role", "status");
+    document.body.append(region);
+  }
+  region.textContent = "";
+  requestAnimationFrame(() => { region.textContent = message; });
 }
 
 /* The JSON API. Throws an Error carrying the server's sentence as its
@@ -71,22 +86,34 @@ export async function adminGate(root, what = "this page") {
   }
   return new Promise(resolve => {
     root.innerHTML = `
-      <div class="wrap narrow">
-        <p class="eyebrow">Quizly</p>
-        <h1>Sign in</h1>
-        <p class="sub">The admin password opens ${escapeHtml(what)}.</p>
-        <form class="card" id="signin">
+      ${siteHeader(what.includes("host") ? "host" : "admin")}
+      <div class="auth-layout">
+        <div class="auth-copy"><span class="intro-tag">${icon("spark")} Good games start here</span>
+          <h1>Bring your people.<br>We'll bring the fun.</h1>
+          <p class="sub">Create something worth playing. Set the stage for a little friendly competition.</p>${trophyArt()}</div>
+        <form class="card auth-card" id="signin">
+          <span class="panel-icon">${icon("lock")}</span>
+          <h2>${what.includes("host") ? "Your host pass" : "Welcome to quiz studio"}</h2>
+          <p class="sub">Enter your admin password to open ${escapeHtml(what)}.</p>
           <div class="field">
-            <label for="password">Password</label>
-            <input id="password" type="password" autocomplete="current-password" required autofocus>
+            <label for="password">Admin password</label>
+            <div class="password-wrap"><input id="password" type="password" autocomplete="current-password" required autofocus>
+            <button type="button" id="show-password" aria-pressed="false">Show</button></div>
           </div>
-          <button type="submit" class="big">Sign in</button>
+          <button type="submit" class="big">Let's get started ${icon("arrow")}</button>
           <p class="err" id="signin-err" role="alert"></p>
+          <a class="back-link" href="/">Here to play? Join a game instead</a>
         </form>
-      </div>`;
+      </div>${footer()}`;
+    $("show-password").onclick = e => {
+      const visible = $("password").type === "password";
+      $("password").type = visible ? "text" : "password";
+      e.currentTarget.textContent = visible ? "Hide" : "Show";
+      e.currentTarget.setAttribute("aria-pressed", String(visible));
+    };
     $("signin").onsubmit = async e => {
       e.preventDefault();
-      const btn = e.target.querySelector("button");
+      const btn = e.target.querySelector('button[type="submit"]');
       btn.disabled = true;
       try {
         await api("/api/auth/login", { method: "POST", body: { password: $("password").value } });
@@ -99,9 +126,65 @@ export async function adminGate(root, what = "this page") {
   });
 }
 
+/* Native dialog gives keyboard focus trapping, Escape, and focus restoration. */
+export function askDialog({ title, message = "", value, confirmLabel = "Continue", danger = false }) {
+  return new Promise(resolve => {
+    const dialog = document.createElement("dialog");
+    const id = `dialog-${crypto.randomUUID()}`;
+    dialog.setAttribute("aria-labelledby", id);
+    if (message) dialog.setAttribute("aria-describedby", `${id}-message`);
+    dialog.innerHTML = `<form method="dialog"><span class="panel-icon">${icon(danger ? "flag" : "spark")}</span>
+      <h2 id="${id}">${escapeHtml(title)}</h2><p id="${id}-message">${escapeHtml(message)}</p>
+      ${value !== undefined ? `<label for="dialog-value">Quiz title</label><input id="dialog-value" value="${escapeHtml(value)}" maxlength="80" required autocomplete="off">` : ""}
+      <div class="dialog-actions"><button type="button" class="quiet" data-dialog-cancel>Cancel</button><button type="submit" class="${danger ? "danger" : ""}" value="confirm">${escapeHtml(confirmLabel)}</button></div></form>`;
+    dialog.querySelector("[data-dialog-cancel]").onclick = () => dialog.close("cancel");
+    dialog.addEventListener("close", () => {
+      const result = dialog.returnValue === "confirm" ? (value !== undefined ? dialog.querySelector("input").value : true) : null;
+      dialog.remove();
+      resolve(result);
+    }, { once: true });
+    document.body.append(dialog);
+    dialog.showModal();
+    if (value !== undefined) dialog.querySelector("input").select();
+    else dialog.querySelector("[data-dialog-cancel]").focus();
+  });
+}
+
+document.addEventListener("click", e => {
+  const toggle = e.target.closest("[data-nav-toggle]");
+  if (toggle) {
+    const header = toggle.closest(".site-header");
+    const expanded = toggle.getAttribute("aria-expanded") !== "true";
+    toggle.setAttribute("aria-expanded", String(expanded));
+    header.classList.toggle("nav-open", expanded);
+    return;
+  }
+  if (!e.target.closest("[data-help]")) return;
+  const dialog = document.createElement("dialog");
+  dialog.setAttribute("aria-labelledby", "help-title");
+  dialog.innerHTML = `<span class="panel-icon">${icon("play")}</span><h2 id="help-title">Your next great game</h2>
+    <p>One room. One quiz. Everyone in on the fun.</p><ol class="help-steps">
+    <li><span class="how-number">01</span><div><b>Find your game</b><p>Scan the host's QR code or enter the six-digit PIN. Pick a nickname and an avatar.</p></div></li>
+    <li><span class="how-number">02</span><div><b>Make your move</b><p>Read each question, then tap your answer. You get one choice, so make it count. On a keyboard, use A–F or 1–6.</p></div></li>
+    <li><span class="how-number">03</span><div><b>Keep the streak alive</b><p>Correct answers earn points. When enabled by the host, speed and consecutive correct answers earn bonuses. Follow your progress on the leaderboard.</p></div></li></ol>
+    <form method="dialog"><button class="big">Got it. Let's play ${icon("arrow")}</button></form>`;
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+});
+
 export async function signOut() {
   await api("/api/auth/logout", { method: "POST" }).catch(() => {});
   location.reload();
+}
+
+export async function copyText(value, message = "Copied") {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast(message);
+  } catch {
+    toast("Copy isn't available here. Use the game PIN to join.");
+  }
 }
 
 /* Keeps the screen on while a game is playing, where the browser allows it. */
@@ -125,7 +208,7 @@ export async function keepAwake() {
   await grab();
 }
 
-/* Lowers a presenter screen's --k (see styles.css) until the page fits the
+/* Lowers a presenter screen's --k (see styles.css) until its content fits the
  * window without scrolling: a projector cannot scroll, and a long question on
  * a 720p screen would otherwise push its answers off the bottom. Narrow
  * windows — someone's phone — are left to scroll as usual. */
@@ -135,12 +218,33 @@ export function fitToScreen() {
   let k = 1;
   stage.style.setProperty("--k", k);
   if (innerWidth < 700) return;
-  const root = document.documentElement;
-  while (k > 0.5 && root.scrollHeight > innerHeight + 1) {
+  // Measure layout, excluding entrance transforms and decorative overflow.
+  // The lobby's grid can contain a QR card taller than its allocated track.
+  const contentHeight = () => {
+    const style = getComputedStyle(stage);
+    const blocks = [...stage.children];
+    const heights = blocks.map(el => el.classList.contains("lobby")
+      ? Math.max(0, ...[...el.children].map(child => child.offsetHeight))
+      : el.offsetHeight);
+    return parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) +
+      (parseFloat(style.rowGap) || 0) * Math.max(0, blocks.length - 1) +
+      heights.reduce((sum, height) => sum + height, 0);
+  };
+  while (k > 0.5 && contentHeight() > innerHeight + 1) {
     k = Math.round((k - 0.05) * 100) / 100;
     stage.style.setProperty("--k", k);
   }
 }
+
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  const header = document.querySelector(".site-header.nav-open");
+  if (!header) return;
+  header.classList.remove("nav-open");
+  const toggle = header.querySelector("[data-nav-toggle]");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.focus();
+});
 
 /* Fits again whenever the window changes size or the web fonts arrive. */
 export function keepFitting() {

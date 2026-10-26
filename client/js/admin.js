@@ -1,54 +1,123 @@
-import { loadQuiz, loadDefaults, saveQuiz, clearLocal, hasLocalEdits, normalise, escapeHtml } from "../../shared/quiz.js";
+/* The admin panel: the quiz library and the results of games played.
+ * Every change is saved to the database as it is made; nothing is kept in
+ * the browser.
+ */
 
-let quiz = null;
-let editingId = null;   // id being edited, or "__new__", or null
+import { DIFFICULTIES, LETTERS, MAX_OPTIONS, normalise } from "/shared/quiz.js";
+import { $, adminGate, api, escapeHtml, fmt, signOut, toast } from "./ui.js";
 
-const $ = id => document.getElementById(id);
-const listEl = $("list");
-const editorEl = $("editor");
+const app = $("app");
+let quizzes = [];          // the library: id, title, size, categories
+let quiz = null;           // the selected quiz in full
+let editingId = null;      // id being edited, or "__new__", or null
 
-init();
+await adminGate(app, "the admin panel");
+app.replaceChildren($("admin-ui").content.cloneNode(true));
+wire();
+await loadQuizzes();
 
-async function init() {
-  try {
-    quiz = await loadQuiz();
-  } catch (err) {
-    document.querySelector(".wrap").innerHTML =
-      `<h1>Could not load questions.json</h1><p>${escapeHtml(err.message)}</p>
-       <p class="note">Serve the folder over http rather than opening the file directly:
-       <code>npx serve .</code> or <code>python3 -m http.server</code>.</p>`;
+function wire() {
+  document.querySelectorAll("nav.tabs button").forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("on", x === b));
+      ["questions", "settings", "data", "results"].forEach(t =>
+        $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab));
+      if (b.dataset.tab === "results") loadGames();
+    };
+  });
+  $("signout").onclick = signOut;
+  $("quiz").onchange = () => loadQuiz($("quiz").value);
+  $("new-quiz").onclick = newQuiz;
+  $("rename-quiz").onclick = renameQuiz;
+  $("delete-quiz").onclick = deleteQuiz;
+  $("add").onclick = () => { editingId = "__new__"; renderEditor(); };
+  $("filter").onchange = renderList;
+  $("save-settings").onclick = saveSettings;
+  $("export").onclick = exportQuiz;
+  $("import-new").onchange = e => importFile(e, "new");
+  $("import-replace").onchange = e => importFile(e, "replace");
+}
+
+/* ---------- the library ---------- */
+
+async function loadQuizzes(selectId) {
+  quizzes = await api("/api/admin/quizzes");
+  const sel = $("quiz");
+  sel.innerHTML = quizzes.map(q =>
+    `<option value="${escapeHtml(q.id)}">${escapeHtml(q.title)} · ${q.questions} question${q.questions === 1 ? "" : "s"}</option>`).join("");
+  const has = quizzes.length > 0;
+  sel.disabled = !has;
+  for (const id of ["rename-quiz", "delete-quiz", "add", "save-settings", "export", "import-replace"]) $(id).disabled = !has;
+  if (!has) {
+    quiz = null;
+    sel.innerHTML = `<option>No quizzes yet</option>`;
+    $("list").innerHTML = `
+      <div class="card">
+        <h3>No quizzes yet</h3>
+        <p class="note" style="margin:0">Make one with <b>New quiz</b>, or bring one in under <b>Import &amp; export</b> —
+          <code>data/questions.json</code> in the project is a ready-made AI quiz.</p>
+      </div>`;
+    $("count").textContent = "";
     return;
   }
-  wireTabs();
-  wireButtons();
+  let remembered = null;
+  try {
+    remembered = localStorage.getItem("quizly:quiz");
+  } catch {
+    // storage blocked
+  }
+  const pick = [selectId, quiz?.id, remembered].find(id => id && quizzes.some(q => q.id === id)) ?? quizzes[0].id;
+  sel.value = pick;
+  await loadQuiz(pick);
+}
+
+async function loadQuiz(id) {
+  quiz = await api(`/api/admin/quizzes/${encodeURIComponent(id)}`);
+  try {
+    localStorage.setItem("quizly:quiz", quiz.id);
+  } catch {
+    // not remembered
+  }
+  editingId = null;
+  $("editor").classList.add("hidden");
   fillSettings();
   renderList();
 }
 
-function wireTabs() {
-  document.querySelectorAll("nav.tabs button").forEach(b => {
-    b.onclick = () => {
-      document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("on", x === b));
-      ["questions", "settings", "data"].forEach(t =>
-        $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab));
-    };
-  });
+async function newQuiz() {
+  const title = prompt("Name the new quiz");
+  if (!title?.trim()) return;
+  try {
+    const created = await api("/api/admin/quizzes", { method: "POST", body: { title } });
+    await loadQuizzes(created.id);
+    toast("Quiz created — add its questions");
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
-function wireButtons() {
-  $("add").onclick = () => { editingId = "__new__"; renderEditor(); };
-  $("filter").onchange = renderList;
-  $("save-settings").onclick = saveSettings;
-  $("export").onclick = exportJson;
-  $("import").onchange = importJson;
-  $("reset").onclick = async () => {
-    if (!confirm("Discard local edits and reload the shipped questions?")) return;
-    clearLocal();
-    quiz = await loadDefaults();
-    fillSettings();
-    renderList();
-    toast("Back to the shipped questions");
-  };
+async function renameQuiz() {
+  const title = prompt("New title", quiz.title);
+  if (!title?.trim() || title === quiz.title) return;
+  try {
+    await api(`/api/admin/quizzes/${encodeURIComponent(quiz.id)}`, { method: "PATCH", body: { title } });
+    await loadQuizzes(quiz.id);
+    toast("Renamed");
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function deleteQuiz() {
+  if (!confirm(`Delete "${quiz.title}" and its ${quiz.questions.length} questions?\n\nGames already played keep their results.`)) return;
+  try {
+    await api(`/api/admin/quizzes/${encodeURIComponent(quiz.id)}`, { method: "DELETE" });
+    quiz = null;
+    await loadQuizzes();
+    toast("Quiz deleted");
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 /* ---------- questions ---------- */
@@ -58,17 +127,16 @@ function categories() {
 }
 
 function renderList() {
+  if (!quiz) return;
   const sel = $("filter");
   const current = sel.value;
   sel.innerHTML = `<option value="">All categories</option>` +
     categories().map(c => `<option${c === current ? " selected" : ""}>${escapeHtml(c)}</option>`).join("");
 
   const shown = current ? quiz.questions.filter(q => q.category === current) : quiz.questions;
-  $("count").textContent = `${quiz.questions.length} in bank`;
-  $("dirty").textContent = hasLocalEdits() ? "Local edits" : "Unedited";
-  $("dirty").classList.toggle("on", hasLocalEdits());
+  $("count").textContent = `${quiz.questions.length} in this quiz`;
 
-  listEl.innerHTML = shown.length ? shown.map(q => `
+  $("list").innerHTML = shown.length ? shown.map(q => `
     <div class="qitem">
       <div class="head">
         <div style="flex:1">
@@ -85,17 +153,24 @@ function renderList() {
           <button class="danger" data-del="${escapeHtml(q.id)}">Delete</button>
         </div>
       </div>
-    </div>`).join("") : `<p class="sub">Nothing in this category.</p>`;
+    </div>`).join("") : `<p class="sub">${quiz.questions.length ? "Nothing in this category." : "No questions yet — add the first one."}</p>`;
 
-  listEl.querySelectorAll("[data-edit]").forEach(b => {
+  $("list").querySelectorAll("[data-edit]").forEach(b => {
     b.onclick = () => { editingId = b.dataset.edit; renderEditor(); };
   });
-  listEl.querySelectorAll("[data-del]").forEach(b => {
-    b.onclick = () => {
+  $("list").querySelectorAll("[data-del]").forEach(b => {
+    b.onclick = async () => {
       const q = quiz.questions.find(x => x.id === b.dataset.del);
       if (!confirm("Delete this question?\n\n" + q.prompt)) return;
-      quiz.questions = quiz.questions.filter(x => x.id !== b.dataset.del);
-      persist("Question deleted");
+      try {
+        await api(`/api/admin/quizzes/${encodeURIComponent(quiz.id)}/questions/${encodeURIComponent(q.id)}`, { method: "DELETE" });
+        quiz.questions = quiz.questions.filter(x => x.id !== q.id);
+        renderList();
+        refreshTitles();
+        toast("Question deleted");
+      } catch (err) {
+        toast(err.message);
+      }
     };
   });
 }
@@ -104,32 +179,33 @@ function blankQuestion() {
   const n = quiz.questions.length + 1;
   return {
     id: "q" + String(n).padStart(2, "0") + "-" + Math.random().toString(36).slice(2, 6),
-    category: "General", difficulty: "medium",
+    category: categories()[0] || "General", difficulty: "medium",
     prompt: "", options: ["", "", "", ""], answer: 0, explanation: ""
   };
 }
 
 function renderEditor() {
+  const editor = $("editor");
   const q = editingId === "__new__" ? blankQuestion() : quiz.questions.find(x => x.id === editingId);
-  if (!q) { editorEl.classList.add("hidden"); return; }
+  if (!q) { editor.classList.add("hidden"); return; }
 
-  editorEl.classList.remove("hidden");
-  editorEl.innerHTML = `
+  editor.classList.remove("hidden");
+  editor.innerHTML = `
     <h3>${editingId === "__new__" ? "New question" : "Editing " + escapeHtml(q.id)}</h3>
     <div class="field">
       <label for="e-prompt">Question</label>
-      <textarea id="e-prompt">${escapeHtml(q.prompt)}</textarea>
+      <textarea id="e-prompt" maxlength="400">${escapeHtml(q.prompt)}</textarea>
     </div>
     <div class="grid2">
       <div class="field">
         <label for="e-cat">Category</label>
-        <input id="e-cat" value="${escapeHtml(q.category)}">
+        <input id="e-cat" maxlength="40" value="${escapeHtml(q.category)}" list="e-cats">
+        <datalist id="e-cats">${categories().map(c => `<option value="${escapeHtml(c)}">`).join("")}</datalist>
       </div>
       <div class="field">
         <label for="e-diff">Difficulty</label>
         <select id="e-diff">
-          ${["easy", "medium", "hard"].map(d =>
-            `<option${d === q.difficulty ? " selected" : ""}>${d}</option>`).join("")}
+          ${DIFFICULTIES.map(d => `<option${d === q.difficulty ? " selected" : ""}>${d}</option>`).join("")}
         </select>
       </div>
     </div>
@@ -142,7 +218,7 @@ function renderEditor() {
     </div>
     <div class="field">
       <label for="e-why">Explanation shown after the reveal</label>
-      <textarea id="e-why">${escapeHtml(q.explanation)}</textarea>
+      <textarea id="e-why" maxlength="1000">${escapeHtml(q.explanation)}</textarea>
     </div>
     <div class="bar">
       <button id="e-save">Save question</button>
@@ -151,47 +227,63 @@ function renderEditor() {
 
   $("e-addopt").onclick = () => {
     const n = $("e-opts").children.length;
-    if (n >= 6) return toast("Six options is the maximum");
+    if (n >= MAX_OPTIONS) return toast(`${MAX_OPTIONS} options is the most a question can have`);
     $("e-opts").insertAdjacentHTML("beforeend", optRow("", n, false));
   };
-  $("e-cancel").onclick = () => { editingId = null; editorEl.classList.add("hidden"); };
+  $("e-cancel").onclick = () => { editingId = null; editor.classList.add("hidden"); };
   $("e-save").onclick = () => saveQuestion(q);
-  editorEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  editor.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function optRow(value, i, checked) {
   return `<div class="optrow">
-    <input type="radio" name="correct" value="${i}"${checked ? " checked" : ""} aria-label="Correct answer">
-    <input type="text" class="opt-text" value="${escapeHtml(value)}" placeholder="Option ${"ABCDEF"[i]}">
+    <input type="radio" name="correct" value="${i}"${checked ? " checked" : ""} aria-label="Option ${LETTERS[i]} is correct">
+    <input type="text" class="opt-text" maxlength="160" value="${escapeHtml(value)}" placeholder="Option ${LETTERS[i]}">
   </div>`;
 }
 
-function saveQuestion(q) {
-  const options = [...editorEl.querySelectorAll(".opt-text")].map(i => i.value.trim()).filter(Boolean);
-  const checked = editorEl.querySelector('input[name="correct"]:checked');
+async function saveQuestion(q) {
+  const editor = $("editor");
+  const rows = [...editor.querySelectorAll(".optrow")];
+  const checked = editor.querySelector('input[name="correct"]:checked');
   const prompt = $("e-prompt").value.trim();
-
   if (!prompt) return toast("The question text is empty");
-  if (options.length < 2) return toast("At least two options are needed");
   if (!checked) return toast("Mark which option is correct");
-  const answer = Number(checked.value);
-  if (answer >= options.length) return toast("The correct option is blank");
+  // Blank options are dropped; the answer follows its option to its new position.
+  const kept = rows.map((r, i) => ({ i, text: r.querySelector(".opt-text").value.trim() })).filter(o => o.text);
+  if (kept.length < 2) return toast("At least two options are needed");
+  const answer = kept.findIndex(o => o.i === Number(checked.value));
+  if (answer < 0) return toast("The option marked correct is blank");
 
   const updated = {
     id: q.id,
     category: $("e-cat").value.trim() || "General",
     difficulty: $("e-diff").value,
-    prompt, options, answer,
+    prompt,
+    options: kept.map(o => o.text),
+    answer,
     explanation: $("e-why").value.trim()
   };
+  try {
+    const saved = await api(`/api/admin/quizzes/${encodeURIComponent(quiz.id)}/questions/${encodeURIComponent(q.id)}`,
+      { method: "PUT", body: updated });
+    const at = quiz.questions.findIndex(x => x.id === saved.id);
+    if (at >= 0) quiz.questions[at] = saved;
+    else quiz.questions.push(saved);
+    editingId = null;
+    editor.classList.add("hidden");
+    renderList();
+    refreshTitles();
+    toast("Question saved");
+  } catch (err) {
+    toast(err.message);
+  }
+}
 
-  const at = quiz.questions.findIndex(x => x.id === q.id);
-  if (at >= 0) quiz.questions[at] = updated;
-  else quiz.questions.push(updated);
-
-  editingId = null;
-  editorEl.classList.add("hidden");
-  persist("Question saved");
+/* The question counts in the quiz picker. */
+function refreshTitles() {
+  const option = [...$("quiz").options].find(o => o.value === quiz.id);
+  if (option) option.textContent = `${quiz.title} · ${quiz.questions.length} question${quiz.questions.length === 1 ? "" : "s"}`;
 }
 
 /* ---------- settings ---------- */
@@ -202,61 +294,173 @@ function fillSettings() {
   $("s-secs").value = s.secondsPerQuestion;
   $("s-base").value = s.basePoints;
   $("s-bonus").value = s.speedBonus;
+  $("s-streak").value = s.streakBonus;
   $("s-shq").value = s.shuffleQuestions ? "yes" : "no";
   $("s-sho").value = s.shuffleOptions ? "yes" : "no";
 }
 
-function saveSettings() {
-  quiz.settings = {
-    questionsPerRound: Number($("s-count").value) || 5,
-    secondsPerQuestion: Number($("s-secs").value) || 20,
-    basePoints: Number($("s-base").value) || 0,
-    speedBonus: Number($("s-bonus").value) || 0,
-    shuffleQuestions: $("s-shq").value === "yes",
-    shuffleOptions: $("s-sho").value === "yes"
-  };
-  persist("Settings saved");
+async function saveSettings() {
+  try {
+    const { settings } = await api(`/api/admin/quizzes/${encodeURIComponent(quiz.id)}/settings`, {
+      method: "PUT",
+      body: {
+        questionsPerRound: Number($("s-count").value),
+        secondsPerQuestion: Number($("s-secs").value),
+        basePoints: Number($("s-base").value),
+        speedBonus: Number($("s-bonus").value),
+        streakBonus: Number($("s-streak").value),
+        shuffleQuestions: $("s-shq").value === "yes",
+        shuffleOptions: $("s-sho").value === "yes"
+      }
+    });
+    quiz.settings = settings;
+    fillSettings();   // shows any value the server brought back into range
+    toast("Settings saved");
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
-/* ---------- data ---------- */
+/* ---------- import and export ---------- */
 
-function exportJson() {
-  const blob = new Blob([JSON.stringify(quiz, null, 2)], { type: "application/json" });
+function exportQuiz() {
+  const { id, ...file } = quiz;
+  const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "questions.json";
+  a.download = (quiz.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "quiz") + ".json";
   a.click();
   URL.revokeObjectURL(a.href);
 }
 
-async function importJson(ev) {
+async function importFile(ev, mode) {
   const file = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
   if (!file) return;
+  let data;
   try {
-    const parsed = normalise(JSON.parse(await file.text()));
-    if (!parsed.questions.length) throw new Error("No questions in that file");
-    quiz = parsed;
-    fillSettings();
-    persist("Imported " + parsed.questions.length + " questions");
+    data = JSON.parse(await file.text());
+  } catch {
+    return toast("That file is not valid JSON");
+  }
+  const preview = normalise(data);
+  try {
+    if (mode === "new") {
+      const created = await api("/api/admin/quizzes", { method: "POST", body: { data } });
+      await loadQuizzes(created.id);
+      toast(`Imported "${created.title}" with ${created.questions.length} questions`);
+    } else {
+      if (!confirm(`Replace the ${quiz.questions.length} questions in "${quiz.title}" with the ${preview.questions.length} in ${file.name}?`)) return;
+      await api(`/api/admin/quizzes/${encodeURIComponent(quiz.id)}/import`, { method: "PUT", body: data });
+      await loadQuizzes(quiz.id);
+      toast(`Replaced with ${preview.questions.length} questions`);
+    }
   } catch (err) {
     toast("Import failed: " + err.message);
   }
-  ev.target.value = "";
 }
 
-/* ---------- helpers ---------- */
+/* ---------- results ---------- */
 
-function persist(msg) {
-  saveQuiz(quiz);
-  renderList();
-  toast(msg);
+async function loadGames() {
+  $("game").classList.add("hidden");
+  const box = $("games");
+  box.classList.remove("hidden");
+  box.innerHTML = `<p class="sub waiting-dots">Loading games</p>`;
+  let games;
+  try {
+    games = await api("/api/admin/games");
+  } catch (err) {
+    box.innerHTML = `<p class="sub">${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  if (!games.length) {
+    box.innerHTML = `<p class="sub">No games yet. Host one and its results appear here.</p>`;
+    return;
+  }
+  box.innerHTML = games.map(g => `
+    <div class="qitem link" data-game="${escapeHtml(g.id)}" tabindex="0" role="button">
+      <div class="head">
+        <div style="flex:1">
+          <div class="meta">
+            <span class="pill">${escapeHtml(when(g.createdAt))}</span>
+            <span class="pill">PIN ${escapeHtml(g.pin)}</span>
+            <span class="pill${g.status === "running" || g.status === "lobby" ? " on" : ""}">${escapeHtml(g.status)}</span>
+          </div>
+          <p class="prompt">${escapeHtml(g.title)}</p>
+          <p class="sub" style="margin:0">${fmt(g.players)} player${g.players === 1 ? "" : "s"} · ${g.played} of ${g.questions} questions played</p>
+        </div>
+      </div>
+    </div>`).join("");
+  box.querySelectorAll("[data-game]").forEach(el => {
+    el.onclick = () => showGame(el.dataset.game);
+    el.onkeydown = e => { if (e.key === "Enter") showGame(el.dataset.game); };
+  });
 }
 
-let toastTimer = null;
-function toast(msg) {
-  const t = $("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+async function showGame(id) {
+  let r;
+  try {
+    r = await api(`/api/admin/games/${encodeURIComponent(id)}`);
+  } catch (err) {
+    return toast(err.message);
+  }
+  $("games").classList.add("hidden");
+  const box = $("game");
+  box.classList.remove("hidden");
+  const secs = ms => (ms == null ? "—" : `${(ms / 1000).toFixed(1)}s`);
+  box.innerHTML = `
+    <div class="bar" style="margin-bottom:16px">
+      <button class="quiet" id="back">← All games</button>
+      <a class="btn ghost" href="/api/admin/games/${encodeURIComponent(r.id)}/results.csv">Download CSV</a>
+      ${r.status === "running" || r.status === "lobby" ? "" : `<button class="danger" id="delete-game">Delete game</button>`}
+    </div>
+    <h2>${escapeHtml(r.title)}</h2>
+    <p class="sub">${escapeHtml(when(r.createdAt))} · PIN ${escapeHtml(r.pin)} · ${escapeHtml(r.status)}</p>
+    ${r.awards.length ? `<div class="awards" style="justify-content:flex-start;margin:16px 0">${r.awards.map(a => `
+      <div class="award" style="animation:none"><div class="e">${escapeHtml(a.emoji)}</div><div class="t">${escapeHtml(a.title)}</div>
+      <div class="w">${escapeHtml(a.avatar)} ${escapeHtml(a.nickname)}</div><div class="d">${escapeHtml(a.detail)}</div></div>`).join("")}</div>` : ""}
+    <div class="card" style="margin:16px 0;overflow-x:auto">
+      <h3>Standings</h3>
+      <table>
+        <tr><th></th><th>Player</th><th class="num">Score</th><th class="num">Right</th><th class="num">Best streak</th><th class="num">Avg time</th></tr>
+        ${r.standings.map(s => `
+          <tr>
+            <td class="rank">${s.rank}</td>
+            <td>${escapeHtml(s.avatar)} ${escapeHtml(s.nickname)}</td>
+            <td class="num">${fmt(s.score)}</td>
+            <td class="num">${s.correct} / ${s.answered}</td>
+            <td class="num">${s.bestStreak}</td>
+            <td class="num">${secs(s.avgCorrectMs)}</td>
+          </tr>`).join("") || `<tr><td></td><td class="sub">Nobody played.</td></tr>`}
+      </table>
+    </div>
+    <div class="card" style="overflow-x:auto">
+      <h3>Questions</h3>
+      <table>
+        <tr><th></th><th>Question and answer</th><th class="num">Right</th><th class="num">Avg time</th></tr>
+        ${r.questions.map((q, i) => `
+          <tr>
+            <td class="rank">${i + 1}</td>
+            <td>${escapeHtml(q.prompt)}<br><span class="sub">${escapeHtml(q.answer)}</span></td>
+            <td class="num">${q.answered ? Math.round((q.correct / q.answered) * 100) + "%" : "—"}<br><span class="sub">${q.correct} / ${q.answered}</span></td>
+            <td class="num">${secs(q.avgMs)}</td>
+          </tr>`).join("") || `<tr><td></td><td class="sub">No questions were played.</td></tr>`}
+      </table>
+    </div>`;
+  $("back").onclick = loadGames;
+  $("delete-game")?.addEventListener("click", async () => {
+    if (!confirm("Delete this game and its results for good?")) return;
+    try {
+      await api(`/api/admin/games/${encodeURIComponent(r.id)}`, { method: "DELETE" });
+      toast("Game deleted");
+      loadGames();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+}
+
+function when(iso) {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }

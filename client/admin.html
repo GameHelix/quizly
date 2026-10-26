@@ -3,27 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AI Quiz — Admin</title>
-<link rel="icon" href="favicon.ico" sizes="any">
+<meta name="theme-color" content="#14161a">
+<meta name="robots" content="noindex">
+<title>Quizly — admin</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300..800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
+<main id="app">
+  <div class="wrap"><p class="eyebrow">Quizly</p><h1>Loading…</h1></div>
+</main>
+
+<template id="admin-ui">
 <div class="wrap wide">
   <div class="row">
     <div>
-      <p class="eyebrow">AI Quiz</p>
+      <p class="eyebrow">Quizly</p>
       <h1 style="margin-bottom:6px">Admin panel</h1>
     </div>
-    <a class="sub" href="index.html" style="color:var(--muted)">Open the quiz</a>
+    <span class="bar">
+      <a class="btn" href="/host">Host a game</a>
+      <a class="btn quiet" href="/board">Leaderboard screen</a>
+      <button class="quiet" id="signout">Sign out</button>
+    </span>
+  </div>
+
+  <div class="card bar" style="margin-top:18px">
+    <label for="quiz" style="margin:0">Quiz</label>
+    <select id="quiz" style="width:auto;min-width:240px;flex:1"></select>
+    <button class="ghost" id="new-quiz">New quiz</button>
+    <button class="quiet" id="rename-quiz">Rename</button>
+    <button class="danger" id="delete-quiz">Delete</button>
   </div>
 
   <nav class="tabs">
     <button data-tab="questions" class="on">Questions</button>
     <button data-tab="settings">Settings</button>
     <button data-tab="data">Import &amp; export</button>
+    <button data-tab="results">Results</button>
   </nav>
 
   <section id="tab-questions">
@@ -31,7 +51,6 @@
       <button id="add">Add question</button>
       <select id="filter" style="width:auto"><option value="">All categories</option></select>
       <span class="pill" id="count"></span>
-      <span class="pill" id="dirty"></span>
     </div>
     <div id="editor" class="card hidden" style="margin-bottom:24px"></div>
     <div id="list"></div>
@@ -41,7 +60,7 @@
     <div class="card">
       <div class="grid2">
         <div class="field">
-          <label for="s-count">Questions per round</label>
+          <label for="s-count">Questions per game</label>
           <input type="number" id="s-count" min="1" max="50">
         </div>
         <div class="field">
@@ -49,12 +68,16 @@
           <input type="number" id="s-secs" min="5" max="120">
         </div>
         <div class="field">
-          <label for="s-base">Base points for a correct answer</label>
+          <label for="s-base">Points for a correct answer</label>
           <input type="number" id="s-base" min="0" max="5000">
         </div>
         <div class="field">
-          <label for="s-bonus">Maximum speed bonus</label>
+          <label for="s-bonus">Speed bonus, at most</label>
           <input type="number" id="s-bonus" min="0" max="5000">
+        </div>
+        <div class="field">
+          <label for="s-streak">Streak bonus per answer in a row</label>
+          <input type="number" id="s-streak" min="0" max="1000">
         </div>
         <div class="field">
           <label for="s-shq">Shuffle questions</label>
@@ -65,6 +88,9 @@
           <select id="s-sho"><option value="yes">Yes</option><option value="no">No</option></select>
         </div>
       </div>
+      <p class="note">A correct answer scores its points plus a share of the speed bonus for the time left.
+        The streak bonus adds that much again for each answer in an unbroken run, up to five times. Games
+        already created keep the settings they started with.</p>
       <button id="save-settings">Save settings</button>
     </div>
   </section>
@@ -72,22 +98,29 @@
   <section id="tab-data" class="hidden">
     <div class="card" style="margin-bottom:16px">
       <h3>Export</h3>
-      <p class="note">Downloads the current bank as <code>questions.json</code>. Drop it back into the project folder to make your edits the new default, or import it into your Next.js app.</p>
-      <button id="export">Download questions.json</button>
+      <p class="note">Downloads this quiz — title, settings and questions — as a JSON file you can keep, edit or import elsewhere.</p>
+      <button id="export">Download this quiz</button>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <h3>Import</h3>
-      <p class="note">Replaces everything currently loaded with the contents of a JSON file in the same shape.</p>
-      <input type="file" id="import" accept="application/json,.json">
+      <h3>Import as a new quiz</h3>
+      <p class="note">Adds a quiz from a JSON file in the same shape. <code>data/questions.json</code> in the project is one.</p>
+      <input type="file" id="import-new" accept="application/json,.json">
     </div>
     <div class="card">
-      <h3>Reset</h3>
-      <p class="note">Discards local edits and goes back to the questions.json shipped in the folder.</p>
-      <button class="danger" id="reset">Discard local edits</button>
+      <h3>Replace this quiz</h3>
+      <p class="note">Swaps this quiz's questions and settings for those in the file. Nothing changes if the file has a problem.</p>
+      <input type="file" id="import-replace" accept="application/json,.json">
     </div>
   </section>
+
+  <section id="tab-results" class="hidden">
+    <div id="games"></div>
+    <div id="game" class="hidden"></div>
+  </section>
 </div>
-<div class="toast" id="toast"></div>
-<script type="module" src="js/admin.js"></script>
+</template>
+
+<div class="toast" id="toast" role="status"></div>
+<script type="module" src="/js/admin.js"></script>
 </body>
 </html>

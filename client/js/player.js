@@ -10,9 +10,10 @@
 
 import { AVATARS, LETTERS, NICKNAME_MAX } from "/shared/quiz.js";
 import { buzz, confetti, countUp } from "./fx.js";
+import { brand, footer, icon, missionPanel, progressRail, siteHeader, trophyArt } from "./design.js";
 import { moveHtml } from "./leaderboard.js";
 import { clock, getState, poll } from "./live.js";
-import { $, api, escapeHtml, fmt, keepAwake, ordinal, plural, toast } from "./ui.js";
+import { $, announce, api, askDialog, escapeHtml, fmt, keepAwake, ordinal, plural, toast } from "./ui.js";
 
 const app = $("app");
 const SESSION_KEY = "quizly:player";
@@ -41,6 +42,7 @@ else renderJoin();
 
 function renderJoin(message = "") {
   stop();
+  document.title = "Quizly — join the game";
   drawn = "";
   document.body.dataset.mood = "";
   const last = readStore(LAST_KEY) || {};
@@ -48,16 +50,25 @@ function renderJoin(message = "") {
   const fixedPin = /^\d{6}$/.test(linkPin) ? linkPin : "";
 
   app.innerHTML = `
-    <p class="eyebrow">Quizly</p>
-    <h1>Join the game</h1>
-    <form class="card stack" id="join" autocomplete="off" novalidate>
+    ${siteHeader("play")}
+    <div class="home-layout${fixedPin ? " quick-join" : ""}">
+      <section class="home-intro"><span class="intro-tag">${icon("spark")} Made for your kind of people</span>
+        <h1>Big brains.<br><span>Bigger energy.</span></h1>
+        <p class="sub">A room full of friends. A little friendly rivalry.<br>One more reason to bring your A-game.</p>
+        <div class="hero-art">${trophyArt()}<span class="art-sticker one">${icon("users")} Better together</span><span class="art-sticker two">${icon("bolt")} Keep that streak going!</span></div>
+      </section>
+      <section class="join-panel" aria-labelledby="join-title">
+      <div class="panel-head"><span class="panel-icon">${icon("play")}</span><span class="live-label">LIVE QUIZ. REAL PEOPLE.</span></div>
+      <h2 id="join-title">You're one PIN away.</h2><p class="sub">Your next “I knew that!” moment starts here.</p>
+    <form class="stack" id="join" autocomplete="off" novalidate>
       <div class="pinline${fixedPin ? "" : " hidden"}" id="pin-fixed">
         <span class="sub">Game PIN</span><b>${fixedPin.slice(0, 3)} ${fixedPin.slice(3)}</b>
         <button type="button" class="quiet" id="pin-change" style="padding:6px 12px;font-size:13px">Change</button>
       </div>
       <div class="field${fixedPin ? " hidden" : ""}" id="pin-field">
         <label for="pin">Game PIN</label>
-        <input id="pin" inputmode="numeric" maxlength="7" placeholder="123 456" value="${fixedPin}" ${fixedPin ? "" : "autofocus"}>
+        <input id="pin" inputmode="numeric" maxlength="7" placeholder="123 456" value="${fixedPin}" aria-describedby="pin-hint join-err" ${fixedPin ? "" : "autofocus"}>
+        <span class="note" id="pin-hint" style="font-size:10px;display:block;margin-top:7px">Look for the six-digit code on the big screen.</span>
       </div>
       <div class="field">
         <label for="nick">Your nickname</label>
@@ -65,14 +76,20 @@ function renderJoin(message = "") {
                enterkeyhint="go" placeholder="What should we call you?" value="${escapeHtml(last.nickname || "")}">
       </div>
       <div class="field">
-        <label>Your avatar</label>
-        <div class="avatars" id="avatars">
-          ${AVATARS.map(a => `<button type="button" class="av${a === avatar ? " on" : ""}" data-av="${a}" aria-pressed="${a === avatar}">${a}</button>`).join("")}
+        <div class="field-title"><label id="avatar-label">Pick your game face</label><span>Make it you.</span></div>
+        <div class="avatars" id="avatars" role="group" aria-labelledby="avatar-label">
+          ${AVATARS.map(a => `<button type="button" class="av${a === avatar ? " on" : ""}" data-av="${a}" aria-label="Choose ${a} avatar" aria-pressed="${a === avatar}">${a}</button>`).join("")}
         </div>
       </div>
-      <button type="submit" class="big" id="join-btn">Join</button>
+      <button type="submit" class="big" id="join-btn">Let's play ${icon("arrow")}</button>
       <p class="err" id="join-err" role="alert">${escapeHtml(message)}</p>
-    </form>`;
+    </form><p class="join-footnote">${icon("check")} No account. No download. Just good fun.</p></section></div>
+    <section class="how-strip" aria-label="How it works">
+      <div class="how-item"><span class="how-number">01</span><div><b>Get in the room</b><p>Enter the PIN, pick your name, find your people.</p></div></div>
+      <div class="how-item"><span class="how-number">02</span><div><b>Think fast. Tap faster.</b><p>Answer live questions. Every right answer counts.</p></div></div>
+      <div class="how-item"><span class="how-number">03</span><div><b>Make your way to the top</b><p>Build a streak. Climb the board. Own your moment.</p></div></div>
+    </section>
+    <aside class="reward-strip">${icon("trophy")}<p><b>A little competition goes a long way.</b> Earn points, chase streaks, and celebrate the wins.</p><div class="reward-tags"><span>${icon("bolt")} Speed bonuses</span><span>${icon("spark")} Answer streaks</span><span>${icon("trophy")} Game awards</span></div></aside>${footer()}`;
 
   if (fixedPin) $("nick").focus();
   $("pin-change").onclick = () => {
@@ -94,9 +111,12 @@ function renderJoin(message = "") {
     const err = $("join-err");
     const pin = $("pin").value.replace(/\D/g, "");
     const nickname = $("nick").value.trim();
-    if (pin.length !== 6) return void (err.textContent = "The PIN has six digits — it is on the big screen.");
-    if (!nickname) return void (err.textContent = "Pick a nickname first.");
+    if (pin.length !== 6) { err.textContent = "The PIN has six digits — it is on the big screen."; $("pin").setAttribute("aria-invalid", "true"); $("pin").focus(); return; }
+    if (!nickname) { err.textContent = "Pick a nickname first."; $("nick").setAttribute("aria-invalid", "true"); $("nick").focus(); return; }
+    $("pin").removeAttribute("aria-invalid");
+    $("nick").removeAttribute("aria-invalid");
     $("join-btn").disabled = true;
+    $("join-btn").textContent = "Joining your game…";
     err.textContent = "";
     try {
       const joined = await api(`/api/games/${pin}/players`, { method: "POST", body: { nickname, avatar } });
@@ -110,6 +130,7 @@ function renderJoin(message = "") {
     } catch (ex) {
       err.textContent = ex.message;
       $("join-btn").disabled = false;
+      $("join-btn").innerHTML = `Let's play ${icon("arrow")}`;
     }
   };
 }
@@ -175,10 +196,14 @@ function render() {
  * the whole page: "good" or "bad" at a reveal, nothing otherwise. */
 function draw(fingerprint, html, after, mood = "") {
   if (fingerprint !== drawn) {
+    const newPhase = fingerprint.split(":")[0] !== drawn.split(":")[0];
     drawn = fingerprint;
     clearInterval(ticker);
     document.body.dataset.mood = mood;
-    app.innerHTML = html();
+    const title = { lobby: "You're in the lobby", question: `Question ${(game?.index || 0) + 1}`, reveal: "Your answer result", leaderboard: "Your standing", final: "Your final results" }[game?.phase] || "Connecting to your game";
+    document.title = `${title} · Quizly`;
+    app.innerHTML = `<div class="player-shell"><header class="player-top">${brand()}<div class="bar"><span class="pill">PIN ${session?.pin || ""}</span><button class="text-btn" data-leave>Leave</button></div></header><div class="player-content"><h1 class="sr-only">${title}</h1>${html()}</div></div>`;
+    if (newPhase) { window.scrollTo({ top: 0, behavior: "instant" }); announce(title); }
     after?.();
   }
 }
@@ -189,10 +214,10 @@ function header(score, mine) {
   const dots = (mine?.history ?? []).map(h => `<i class="${h === true ? "ok" : h === false ? "no" : ""}"></i>`).join("") +
     (game.phase === "question" ? `<i class="now"></i>` : "");
   return `
-    <div class="row">
+    <div class="game-head"><div class="row">
       <span class="bar"><span class="pill">${game.index + 1} / ${game.total}</span><span class="trail" aria-hidden="true">${dots}</span></span>
       <span class="bar">${streak}<span class="pill on">${fmt(score)} pts</span></span>
-    </div>`;
+    </div>${progressRail(game.index, game.total, game.phase)}</div>`;
 }
 
 function renderLobby() {
@@ -201,8 +226,9 @@ function renderLobby() {
       <div class="face">${escapeHtml(session.avatar)}</div>
       <p class="eyebrow">${escapeHtml(game.title)}</p>
       <h1>You're in, ${escapeHtml(session.nickname)}!</h1>
-      <p class="sub">Find your name on the big screen. The game starts when the host is ready.</p>
-      <p class="note" id="lobby-count"></p>
+      <p class="sub">Your game face is on. Your competition is joining.</p>
+      <div class="waiting-room"><span class="live-label">YOU'RE IN THE LOBBY</span><p>The host will start when everyone's ready.</p><p class="note" id="lobby-count" role="status"></p></div>
+      ${missionPanel()}<button class="text-btn" data-help style="margin-top:18px">How do points work? ${icon("arrow")}</button>
     </div>`);
   $("lobby-count").textContent = `${plural(game.players, "player")} in so far`;
 }
@@ -215,8 +241,8 @@ function renderQuestion(mine) {
   draw(`q:${game.index}:${choice}:${mine ? 1 : 0}`, () => `
     ${header(lastScore, mine)}
     <h2 class="${size}" style="margin-top:18px">${escapeHtml(q.prompt)}</h2>
-    <div class="timer" id="timer"><span id="bar"></span></div>
-    <p class="note" id="left">&nbsp;</p>
+    <div class="timer" id="timer" role="timer" aria-label="Question time remaining"><span id="bar"></span></div>
+    <div class="timer-meta"><span>One answer. Make it count.</span><span id="left">&nbsp;</span></div>
     <div class="ready" id="ready" aria-live="polite"></div>
     <div class="opts${compact}">
       ${q.options.map((o, i) => `
@@ -224,7 +250,8 @@ function renderQuestion(mine) {
           <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}</span>
         </button>`).join("")}
     </div>
-    <p class="status" id="status">${choice != null ? "Locked in. Waiting for the others…" : ""}</p>`,
+    <p class="status" id="status" role="status">${choice != null ? "✓ Answer locked in. Let's see how you did…" : ""}</p>
+    ${missionPanel(mine?.me?.streak || 0)}`,
   () => {
     app.querySelectorAll("button.opt").forEach(b => { b.onclick = () => choose(Number(b.dataset.i)); });
     ticker = setInterval(tickQuestion, 100);
@@ -320,14 +347,16 @@ function renderReveal(mine) {
       <div class="opts">
         ${q.options.map((o, i) => `
           <button class="opt c${i}${i === r.answer ? " right" : i === res?.choice ? " wrong" : ""}" disabled>
-            <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}</span>
+            <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}${i === r.answer ? '<small class="result-heading">Correct answer</small>' : i === res?.choice ? '<small class="result-heading">Your answer</small>' : ""}</span>
           </button>`).join("")}
       </div>
-      ${r.explanation ? `<div class="card" style="margin-top:16px"><p style="margin:0">${escapeHtml(r.explanation)}</p></div>` : ""}
+      ${r.explanation ? `<div class="card learning-note"><span class="eyebrow">A little more to know</span><p style="margin:0">${escapeHtml(r.explanation)}</p></div>` : ""}
+      ${missionPanel(streak)}
       ${mine?.standing ? `<p class="status">You're ${ordinal(mine.standing.rank)} of ${mine.standing.of} ${moveHtml(mine.standing.move)}</p>` : ""}`;
   }, () => {
     if (res && celebrated !== screenKey) {
       celebrated = screenKey;
+      announce(res.correct ? `Correct! You earned ${fmt(res.points)} points. ${streak} correct in a row.` : res.choice === null ? "Time's up. See the correct answer below." : "Not this time. See the correct answer below.");
       buzz(res.correct ? [50] : [90, 60, 90]);
       if (res.correct) {
         countUp($("burst"), 0, res.points, 900);
@@ -359,6 +388,7 @@ function renderStanding(mine) {
         ${mine.me.streak >= 2 ? `<p><span class="pill fire">🔥 ${mine.me.streak} right in a row</span></p>` : ""}`
       : `<h1 class="waiting-dots">Counting</h1>`}
       <p class="note">Next question coming up — eyes on the big screen.</p>
+      ${progressRail(game.index, game.total, game.phase)}${missionPanel(mine?.me?.streak || 0)}
     </div>`);
 }
 
@@ -371,7 +401,7 @@ function renderFinal(mine) {
       <div class="hero">
         <div class="face">${escapeHtml(session.avatar)}</div>
         <p class="eyebrow">${escapeHtml(game.title)} · final</p>
-        <div class="rank">${ordinal(s.rank)}</div>
+        <span class="result-heading">${s.rank === 1 ? "You took the crown!" : s.rank <= 3 ? "A podium finish. Nicely played!" : "That's a wrap. Nicely played!"}</span><div class="rank">${ordinal(s.rank)}</div>
         <p class="sub">of ${s.of} · ${fmt(mine.me.score)} points</p>
         <div class="stats">
           <div class="stat"><b>${f.played ? Math.round((f.correct / f.played) * 100) : 0}%</b><span>${f.correct} of ${f.played} right</span></div>
@@ -407,7 +437,7 @@ function ended(message) {
 function removed() {
   stop();
   clearSession();
-  showMessage("You were removed", "The host took you out of this game. You can join again with another nickname.");
+  showMessage("You were removed", "The host took you out of this game. You can join a different game with a new PIN.");
 }
 
 function lost() {
@@ -427,10 +457,11 @@ function showMessage(title, text) {
   drawn = "";
   document.body.dataset.mood = "";
   app.innerHTML = `
-    <p class="eyebrow">Quizly</p>
+    ${siteHeader("play")}<div class="wrap narrow"><div class="empty-state">
+    <span class="panel-icon" style="margin:0 auto 20px">${icon("flag")}</span>
     <h1>${escapeHtml(title)}</h1>
     <p class="sub">${escapeHtml(text)}</p>
-    <button class="big" id="again" style="margin-top:12px">Join a game</button>`;
+    <button class="big" id="again" style="margin-top:24px">Find your next game ${icon("arrow")}</button></div></div>${footer()}`;
   $("again").onclick = () => {
     history.replaceState(null, "", "/");
     renderJoin();
@@ -448,6 +479,9 @@ function clearSession() {
   game = null;
   me = null;
   screenKey = "";
+  pending = null;
+  lastScore = 0;
+  celebrated = "";
   try {
     localStorage.removeItem(SESSION_KEY);
   } catch {
@@ -471,3 +505,16 @@ function writeStore(key, value) {
     // private mode: the game still works, a refresh just means joining again
   }
 }
+
+document.addEventListener("keydown", e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, select, button, a, dialog")) return;
+  if (document.querySelector("dialog[open]")) return;
+  const index = /^[1-6]$/.test(e.key) ? Number(e.key) - 1 : LETTERS.indexOf(e.key.toUpperCase());
+  const button = app.querySelector(`button.opt[data-i="${index}"]`);
+  if (index >= 0 && button && !button.disabled) { e.preventDefault(); button.click(); }
+});
+
+document.addEventListener("click", async e => {
+  if (!e.target.closest("[data-leave]")) return;
+  if (await askDialog({ title: "Leave this game?", message: "Returning with a new nickname starts a new player. Your current score stays on the board.", confirmLabel: "Leave game" })) leave();
+});

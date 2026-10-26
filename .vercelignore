@@ -2,10 +2,10 @@
 .env
 .env.*
 !.env.example
+.neon
 # Built on Vercel by `npm run build`.
 public
 # Not part of the app.
-assets
 test
 docker-compose.yml
 .DS_Store

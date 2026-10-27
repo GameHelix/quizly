@@ -21,7 +21,8 @@ const paths = {
 
 export const icon = (name, cls = "") => `<svg class="icon ${cls}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.spark}</svg>`;
 
-export const brand = () => `<a class="brand" href="/" aria-label="Quizly. Home"><span class="brand-mark" aria-hidden="true"><svg width="29" height="29" viewBox="0 0 64 64" fill="currentColor"><path d="M32 10a20 20 0 1 0 12 36l9 8 6-7-9-8A20 20 0 0 0 32 10Zm0 10a10 10 0 1 1 0 20 10 10 0 0 1 0-20Z"/></svg></span>quizly<span class="brand-dot">.</span></a>`;
+// the logo is the favicon, so the tab and the page always show the same mark
+export const brand = () => `<a class="brand" href="/" aria-label="Quizly. Home"><img class="brand-mark" src="/favicon.svg?v=2" width="36" height="36" alt="">quizly<span class="brand-dot">.</span></a>`;
 
 export function siteHeader(active = "play") {
   return `<header class="site-header">${brand()}<button class="quiet nav-toggle" data-nav-toggle aria-expanded="false" aria-controls="primary-navigation" aria-label="Explore navigation">${icon("grid")}</button><nav class="site-nav" id="primary-navigation" aria-label="Main navigation">

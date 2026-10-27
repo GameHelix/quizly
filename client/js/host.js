@@ -500,11 +500,17 @@ function fullscreen() {
 
 document.addEventListener("keydown", e => {
   if (e.repeat || document.querySelector("dialog[open]") || e.target.closest("input, select, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
-  const onButton = e.target.closest("button, a");
-  if (["Space", "Enter", "ArrowRight", "PageDown"].includes(e.code) && !onButton) {
-    if (!game || game.phase === "final" || (game.phase === "lobby" && !game.players)) return;
+  if (["Space", "Enter", "NumpadEnter", "ArrowRight", "PageDown"].includes(e.code)) {
+    if (!game || game.status === "abandoned") return;   // no stage: keys keep their usual meaning
+    // Chrome and Edge leave a clicked button focused. Space would press it
+    // again — a second press of Lock opens the game — and a clicker would do
+    // nothing, so on the stage these keys only ever mean Next. Enter still
+    // presses a button reached with the keyboard.
+    const button = e.target.closest("button, a");
+    if (button && e.code.endsWith("Enter")) return;
     e.preventDefault();
-    act("next");
+    button?.blur();
+    if (game.phase !== "final" && !(game.phase === "lobby" && !game.players)) act("next");
   } else if (e.key === "f" || e.key === "F") fullscreen();
   else if (e.key === "m" || e.key === "M") toggleSound();
   else if (e.key === "l" || e.key === "L") toggleLock();

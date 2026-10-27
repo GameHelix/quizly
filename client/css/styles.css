@@ -658,6 +658,31 @@ button.opt .result-heading { margin-top: 2px; color: inherit; }
 .badge { box-shadow: 0 4px 0 #e7ecd8; }
 .result-heading { display: block; color: var(--forest); font-size: 13px; font-weight: 600; margin-top: 20px; }
 
+/* The result card at the end of a game, and its share buttons */
+.share-panel { margin-top: 30px; text-align: center; }
+.share-panel h2 { margin: 0 0 6px; }
+.share-panel .sub { margin: 0; }
+.share-card { position: relative; max-width: 340px; margin: 22px auto 0; }
+.share-card canvas { display: block; width: 100%; height: auto; border-radius: 22px; box-shadow: 0 6px 0 #e3e9d6, 0 22px 44px rgba(27, 48, 39, .18); transform: rotate(-1.5deg); animation: card-in .7s cubic-bezier(.2, .9, .3, 1.25) both; }
+.share-card .share-look { position: absolute; right: -8px; bottom: -16px; min-height: 40px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 13px; box-shadow: var(--shadow); }
+.share-card .share-look:hover { background: var(--accent-bg); color: var(--forest); }
+.share-main { width: 100%; margin-top: 34px; }
+.share-apps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 18px; }
+.share-apps .share-app { display: flex; flex-direction: column; align-items: center; gap: 7px; min-height: 0; padding: 4px 0; border: 0; border-radius: 12px; background: none; box-shadow: none; color: var(--muted); font-size: 11px; font-weight: 600; text-decoration: none; }
+.share-apps .share-app:hover { background: none; box-shadow: none; color: var(--text); }
+.share-app .dot { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 3px 0 rgba(27, 48, 39, .14); transition: transform .18s; }
+.share-app:hover .dot, .share-app:focus-visible .dot { transform: translateY(-2px) rotate(-6deg) scale(1.06); }
+.share-app.whatsapp .dot { background: #25d366; }
+.share-app.instagram .dot { background: radial-gradient(circle at 30% 110%, #fdf497 0%, #fdf497 6%, #fd5949 45%, #d6249f 62%, #285aeb 92%); }
+.share-app.linkedin .dot { background: #0a66c2; }
+.share-app.telegram .dot { background: #229ed9; }
+.share-app.facebook .dot { background: #1877f2; }
+.share-app.x .dot { background: #111; }
+.share-tools { display: flex; justify-content: center; gap: 22px; margin-top: 6px; }
+.share-tools .text-btn { gap: 6px; font-size: 13px; }
+@keyframes card-in { from { opacity: 0; transform: rotate(-8deg) scale(.86); } to { opacity: 1; transform: rotate(-1.5deg) scale(1); } }
+@media (max-width: 370px) { .share-app .dot { width: 40px; height: 40px; } .share-apps .share-app { font-size: 10px; } }
+
 /* Host setup and sign-in */
 .setup-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; padding-top: 30px; }
 .setup-copy h1 { font-size: clamp(42px, 5vw, 62px); margin: 17px 0; }
@@ -727,6 +752,7 @@ ol.board li:nth-child(1) { border-color: #b6ce8a; background: linear-gradient(90
 .spectator-note { text-align: center; font-size: 12px; color: var(--muted); margin-top: auto; }
 /* fitToScreen measures a stage by its children's boxes, without margins */
 .stage > p { margin-bottom: 0; }
+.share-nudge { text-align: center; color: var(--forest); font-weight: 600; font-size: calc(var(--k) * clamp(16px, 1.5vw, 22px)); }
 /* a screen too full to fit lets its decoration go before anything shrinks */
 .stage.tight .lobby-heading, .stage.tight .lobby .mission-panel, .stage.tight .podium-title, .stage.tight .spectator-note { display: none; }
 

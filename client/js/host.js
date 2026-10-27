@@ -398,7 +398,7 @@ function final(key) {
       <div class="hfoot">
         <a class="btn quiet" href="/api/admin/games/${encodeURIComponent(game.id)}/results.csv">Download results (CSV)</a>
         <a class="btn quiet" href="/board#${game.pin}" target="_blank" rel="noopener">Leaderboard screen</a>
-        <span class="grow"></span>
+        <span class="grow share-nudge">📲 Your result card is ready on your phone. Share it!</span>
         <button id="again">New game</button>
       </div>
     </div>`, () => {

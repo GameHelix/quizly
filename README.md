@@ -37,6 +37,12 @@ panel at `/admin`. Vercel project `quizly` in the PRE team; database on Neon.
   in calm colours, the phone's clock never turns red or buzzes, and ranks are named only
   at the top: the projector lists the top five, and a phone further down hears "Top half"
   or "Keep going!" instead of "38th of 50".
+- **Result cards to share** — at the end each phone draws a picture of its game: a playful
+  title from its avatar and how it played (a 👑 "Champion Unicorn", a ⚡ "Lightning Turtle",
+  a 🌱 "Curious Bunny" who learned five new things), the score, the run of answers and the
+  badges, in a colour of its choosing (🎲 New look). "Share my card" opens the phone's share
+  sheet for Instagram, WhatsApp, LinkedIn and the rest; a button per app, Save picture and
+  Copy message cover the rest. A shared link shows `client/og.png` as its preview.
 
 ## Interface and game experience
 
@@ -70,7 +76,7 @@ server/               the API
   migrations/         SQL, applied in order by `npm run build` / `npm run db:migrate`
   config.js, net.js, errors.js, index.js (the standalone server)
 shared/quiz.js        rules both sides use: validation, scoring, streaks, nicknames
-client/               the browser: four pages, their scripts, the stylesheet, the favicon
+client/               the browser: four pages, their scripts, the stylesheet, the favicon, the link preview
 data/questions.json   a ready-made AI quiz in the import format — not read at runtime
 scripts/              build, migrate, seed, load-test, abuse-test
 test/                 rules and full-API tests (node --test)

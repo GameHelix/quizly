@@ -13,6 +13,7 @@ import { buzz, confetti, countUp } from "./fx.js";
 import { brand, footer, icon, missionPanel, progressRail, siteHeader, trophyArt } from "./design.js";
 import { moveHtml, tier } from "./leaderboard.js";
 import { clock, getState, live } from "./live.js";
+import { cardResult, sharePanel, wireShare } from "./share.js";
 import { $, announce, api, askDialog, escapeHtml, fmt, keepAwake, ordinal, plural, toast } from "./ui.js";
 
 const app = $("app");
@@ -496,6 +497,7 @@ function placeHtml(s, kind) {
 
 function renderFinal(mine) {
   const f = mine?.final;
+  const card = f ? cardResult(mine, game.title) : null;
   draw(`final:${f ? 1 : 0}`, () => {
     if (!f) return `<div class="hero"><h1 class="waiting-dots">Adding it up</h1></div>`;
     const s = mine.standing;
@@ -512,6 +514,7 @@ function renderFinal(mine) {
         </div>
         ${f.badges.length ? `<div class="badges">${f.badges.map(b => `
           <div class="badge"><span class="e">${escapeHtml(b.emoji)}</span><b>${escapeHtml(b.title)}</b>${b.detail ? `<small>${escapeHtml(b.detail)}</small>` : ""}</div>`).join("")}</div>` : ""}
+        ${sharePanel(card)}
         <div class="card" style="text-align:left;margin-top:18px">
           <h3>Podium</h3>
           ${f.podium.map(p => `<p style="margin:6px 0">${["🥇", "🥈", "🥉"][p.rank - 1]} ${escapeHtml(p.avatar)} ${escapeHtml(p.nickname)} <span class="sub">· ${fmt(p.score)}</span></p>`).join("")}
@@ -520,6 +523,7 @@ function renderFinal(mine) {
       </div>`;
   }, () => {
     $("again")?.addEventListener("click", leave);
+    if (card) wireShare(card);
     if (f && once("final")) {
       if (mine.standing.rank <= 3) confetti();
       buzz([60, 40, 60, 40, 140]);

@@ -181,12 +181,12 @@ export async function signOut() {
   location.reload();
 }
 
-export async function copyText(value, message = "Copied") {
+export async function copyText(value, message = "Copied", failed = "Copy isn't available here. Use the game PIN to join.") {
   try {
     await navigator.clipboard.writeText(value);
     toast(message);
   } catch {
-    toast("Copy isn't available here. Use the game PIN to join.");
+    toast(failed);
   }
 }
 

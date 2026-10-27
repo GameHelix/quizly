@@ -15,211 +15,211 @@
       "id": "q01",
       "category": "Basics",
       "difficulty": "easy",
-      "prompt": "ChatGPT, Gemini and Copilot are examples of…",
+      "prompt": "In AI tools, what is a “prompt”?",
       "options": [
-        "AI assistants",
-        "Search engines",
-        "Social networks",
-        "Antivirus apps"
+        "What you write to the AI",
+        "The answer the AI gives you",
+        "A paid plan with extra tools",
+        "An AI app for your phone"
       ],
       "answer": 0,
-      "explanation": "They are AI assistants. You ask in normal words, and they write an answer."
+      "explanation": "A prompt is what you ask or tell the AI. Say what you want, who it is for and how long. A better prompt gets a better answer."
     },
     {
       "id": "q02",
       "category": "Basics",
       "difficulty": "medium",
-      "prompt": "How does an AI chatbot make its answer?",
+      "prompt": "How does AI write its answers?",
       "options": [
-        "It copies it from Google",
-        "It guesses the next words, one by one",
-        "A person types it live",
-        "It picks it from a fixed list"
+        "It copies them from websites",
+        "It picks from a list of ready-made answers",
+        "It predicts the next word, one by one",
+        "People type them live"
       ],
-      "answer": 1,
-      "explanation": "It learned from a huge amount of text and guesses the next words. So it can sound right and still be wrong."
+      "answer": 2,
+      "explanation": "It learned from a huge amount of text and writes the words most likely to come next. That is why it can sound right and still be wrong."
     },
     {
       "id": "q03",
-      "category": "Safety",
+      "category": "Basics",
       "difficulty": "easy",
-      "prompt": "The AI answer sounds very sure. What is true?",
+      "prompt": "When AI makes up a fact that sounds true, what is it called?",
       "options": [
-        "It is always correct",
-        "It can still be wrong",
-        "A person checked it",
-        "It comes from a real document"
+        "A deepfake",
+        "A hallucination",
+        "A bias",
+        "A computer virus"
       ],
       "answer": 1,
-      "explanation": "AI can invent facts that sound real. This is called a “hallucination”."
+      "explanation": "AI can make up names, numbers and even laws, and still sound sure. A “deepfake” is something else: a fake photo, video or voice made with AI."
     },
     {
       "id": "q04",
-      "category": "Using AI",
-      "difficulty": "easy",
-      "prompt": "AI gives you a number for a client. What do you do first?",
+      "category": "Basics",
+      "difficulty": "medium",
+      "prompt": "What is the “knowledge cutoff” of an AI?",
       "options": [
-        "Send it to the client",
-        "Ask the AI if it is sure",
-        "Check it in a trusted source",
-        "Use it if it looks right"
+        "The longest answer it can write",
+        "The day the free plan ends",
+        "A filter that blocks rude words",
+        "The date it stopped learning"
       ],
-      "answer": 2,
-      "explanation": "Asking the AI “are you sure?” is not a check. Check numbers, names and laws in the real source."
+      "answer": 3,
+      "explanation": "It does not know what happened after that date, like this year's prices or new laws. Use web search, or give it the new facts yourself."
     },
     {
       "id": "q05",
-      "category": "Safety",
-      "difficulty": "easy",
-      "prompt": "Which is OK to paste into a free public AI tool?",
+      "category": "Basics",
+      "difficulty": "hard",
+      "prompt": "How is an AI “agent” different from a chatbot?",
       "options": [
-        "A client's passport details",
-        "A signed sales contract",
-        "A public news article",
-        "The staff salary list"
+        "It answers in many languages",
+        "It does tasks, like booking a meeting",
+        "It understands photos and PDF files",
+        "It writes long reports"
       ],
-      "answer": 2,
-      "explanation": "Free public tools may keep what you type. Never paste private client or company data."
+      "answer": 1,
+      "explanation": "Chatbots can already translate, read photos and write. An agent also acts for you: it clicks, sends and books. Give it only the access it needs."
     },
     {
       "id": "q06",
-      "category": "Safety",
+      "category": "Using AI",
       "difficulty": "medium",
-      "prompt": "What is the safest way to use AI with company documents?",
+      "prompt": "You ask AI for an apartment ad but give no details. What is the risk?",
       "options": [
-        "Use the AI tool the company approved",
-        "Use your personal free account",
-        "Send them to a friend who knows AI",
-        "Upload them to any website"
+        "It refuses to write it",
+        "It finds the details online",
+        "It makes up details",
+        "It shows an error"
       ],
-      "answer": 0,
-      "explanation": "Approved tools have the right security settings. Personal accounts are outside the company's control."
+      "answer": 2,
+      "explanation": "AI fills the gaps with guesses, like a sea view that isn't there. Give it the real facts (rooms, size, floor, price) and check the ad."
     },
     {
       "id": "q07",
       "category": "Using AI",
       "difficulty": "medium",
-      "prompt": "Which request gets the best result from AI?",
+      "prompt": "You want AI to write in your company's style. What works best?",
       "options": [
-        "Write about an apartment",
-        "Write something nice",
-        "Write a short, friendly ad for a 2-room apartment near the metro",
-        "Apartment ad"
+        "Show it a good example",
+        "Ask it to “sound professional”",
+        "Ask it to be more creative",
+        "Keep your request very short"
       ],
-      "answer": 2,
-      "explanation": "Say what you want, who it is for, how long, and the tone. Clear requests get better answers."
+      "answer": 0,
+      "explanation": "AI is great at copying a style. Paste one or two of your best texts and say “write like this”. An example beats a long description."
     },
     {
       "id": "q08",
-      "category": "Basics",
+      "category": "Using AI",
       "difficulty": "medium",
-      "prompt": "Why can AI give old information about recent events?",
+      "prompt": "Not sure what details AI needs? Which line helps most?",
       "options": [
-        "Its knowledge stops at a certain date",
-        "It is too slow",
-        "It does not like news",
-        "The internet is closed"
+        "“Please make no mistakes.”",
+        "“You are the smartest AI in the world.”",
+        "“Answer fast.”",
+        "“Ask me questions before you start.”"
       ],
-      "answer": 0,
-      "explanation": "Many AI models only know the world up to a certain date. Without web search, they can miss new events and prices."
+      "answer": 3,
+      "explanation": "The AI then asks what it needs, like the budget, area or deadline. Its answer fits your real case, not a guess."
     },
     {
       "id": "q09",
       "category": "Using AI",
       "difficulty": "easy",
-      "prompt": "Which task is AI usually good at?",
+      "prompt": "Which request usually gets the best title for an ad?",
       "options": [
-        "Writing a first draft of an email",
-        "Signing a contract for you",
-        "Promising a sale price",
-        "Knowing a client's private plans"
+        "“Write one perfect title.”",
+        "“Give me 10 title ideas.”",
+        "“Make it catchy.”",
+        "“Surprise me.”"
       ],
-      "answer": 0,
-      "explanation": "AI is great for drafts, summaries and ideas. A person still checks, decides and signs."
+      "answer": 1,
+      "explanation": "AI makes ideas fast. Ask for many, pick the best one or mix two, then ask AI to improve it. You stay the one who decides."
     },
     {
       "id": "q10",
-      "category": "Safety",
-      "difficulty": "easy",
-      "prompt": "AI wrote an email with a mistake, and you sent it. Who is responsible?",
+      "category": "Using AI",
+      "difficulty": "medium",
+      "prompt": "AI makes a summary of a 30-page contract. What is true?",
       "options": [
-        "The AI",
-        "The AI company",
-        "You",
-        "Nobody"
+        "It can miss key details",
+        "It counts as a legal check",
+        "You can skip reading the contract",
+        "AI can't read long files"
       ],
-      "answer": 2,
-      "explanation": "If you send it, you own it. Always read AI text before you use it."
+      "answer": 0,
+      "explanation": "Summaries save time, but they can leave out what matters. Read the key parts yourself: dates, prices, payments and fines."
     },
     {
       "id": "q11",
-      "category": "Basics",
-      "difficulty": "easy",
-      "prompt": "What can many AI tools understand today?",
+      "category": "Safety",
+      "difficulty": "medium",
+      "prompt": "What can free AI tools do with what you type?",
       "options": [
-        "Only typed text",
-        "Text, photos and files",
-        "Only numbers",
-        "Only English"
+        "Delete it when you close the chat",
+        "Nothing, it stays private",
+        "Use it to train their AI",
+        "Only check the spelling"
       ],
-      "answer": 1,
-      "explanation": "Many tools can read a photo of a floor plan, a PDF or a table, in many languages."
+      "answer": 2,
+      "explanation": "Many free tools keep chats and may use them to train their AI. Keep client and company data out, and use the tool your company approved."
     },
     {
       "id": "q12",
-      "category": "Using AI",
-      "difficulty": "easy",
-      "prompt": "The first AI answer is not good enough. What is the best next step?",
+      "category": "Safety",
+      "difficulty": "medium",
+      "prompt": "AI quotes a law for a client. How do you check it?",
       "options": [
-        "Stop using AI",
-        "Tell it what to change and try again",
-        "Use it anyway",
-        "Restart your computer"
+        "Ask the AI: “Are you sure?”",
+        "Ask a second AI",
+        "No need, AI knows every law",
+        "Check the official law text"
       ],
-      "answer": 1,
-      "explanation": "Working with AI is a conversation. Add details, give an example, or ask for changes."
+      "answer": 3,
+      "explanation": "AI can make up laws and article numbers, and still say “Yes, I'm sure.” Another AI can be wrong too. Only the official text counts."
     },
     {
       "id": "q13",
       "category": "Safety",
       "difficulty": "medium",
-      "prompt": "A voice message from your “boss” asks you to send money now. What do you do?",
+      "prompt": "How much audio does AI need to copy someone's voice?",
       "options": [
-        "Send it quickly",
-        "Call your boss on a number you know",
-        "Reply with your password",
-        "Forward it to the team"
+        "At least an hour",
+        "Just a few seconds",
+        "At least ten hours",
+        "It can't copy voices yet"
       ],
       "answer": 1,
-      "explanation": "AI can copy voices and faces. Check unusual requests another way before you act."
+      "explanation": "A short voice message can be enough. If your “boss” or a client calls and asks for money in a hurry, hang up and call back on a number you know."
     },
     {
       "id": "q14",
-      "category": "Using AI",
-      "difficulty": "hard",
-      "prompt": "What can an AI “agent” do that a simple chatbot cannot?",
+      "category": "Safety",
+      "difficulty": "easy",
+      "prompt": "Why are scam emails harder to recognize today?",
       "options": [
-        "Take actions, like sending emails",
-        "Answer questions",
-        "Write text",
-        "Translate"
+        "AI writes them with no mistakes",
+        "They never have links",
+        "Email apps stopped checking for spam",
+        "They only come from friends"
       ],
       "answer": 0,
-      "explanation": "An agent can do tasks for you: send, book, update. That is why its access needs care."
+      "explanation": "Bad spelling is no longer a warning sign. Check the sender's address, and slow down when an email asks you to pay, click or share a password."
     },
     {
       "id": "q15",
       "category": "Safety",
-      "difficulty": "medium",
-      "prompt": "AI learned from human writing. What can it copy from people?",
+      "difficulty": "hard",
+      "prompt": "AI sorts job CVs. Why should a person still decide?",
       "options": [
-        "Only good things",
-        "Mistakes and unfair opinions",
-        "Nothing at all",
-        "Passwords"
+        "AI can't read CVs",
+        "AI is slower than people",
+        "It can repeat unfair past choices",
+        "AI picks people at random"
       ],
-      "answer": 1,
-      "explanation": "AI can repeat unfair ideas from its data. Watch for unfair answers about people."
+      "answer": 2,
+      "explanation": "This is called “bias”. If a company hired mostly men in the past, AI may prefer men too. People must check that AI's choices are fair."
     }
   ]
 }

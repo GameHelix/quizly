@@ -187,7 +187,7 @@ A quiz is imported and exported as JSON — `data/questions.json` is one:
   },
   "questions": [{
     "id": "q01", "category": "Basics", "difficulty": "easy",
-    "prompt": "ChatGPT, Gemini and Copilot are examples of…",
+    "prompt": "In AI tools, what is a “prompt”?",
     "options": ["…", "…", "…", "…"],
     "answer": 0,
     "explanation": "Shown after the reveal."

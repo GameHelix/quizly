@@ -24,11 +24,15 @@ let game = null;                        // the shared state
 let me = null;                          // this phone's own view of the current screen
 let screenKey = "";                     // the screen `me` was fetched for
 let drawn = "";                         // what is on screen now, so a poll redraws only on change
-let pending = null;                     // a choice sent and not yet confirmed
+let pending = null;                     // a choice tapped on this screen
+let sending = false;                    // …and still on its way to the server
+let picked = null;                      // { index, choice, sure }: this phone's answer, carried into the reveal
 let lastScore = 0;
-let celebrated = "";
+let lastSecond = null;
+let effects = new Set();                // celebrations already played on this screen
 let poller = null;
 let ticker = null;
+const shown = new WeakMap();            // element → the html last put in it
 
 let linkPin = (new URLSearchParams(location.search).get("pin") || "").replace(/\D/g, "").slice(0, 6);
 if (session && linkPin && linkPin !== session.pin) {
@@ -148,6 +152,8 @@ function follow() {
       screenKey = key;
       me = null;
       pending = null;
+      sending = false;
+      effects = new Set();
       loadMe(key);
     }
     render();
@@ -166,6 +172,7 @@ async function loadMe(key) {
       if (view.kicked) return removed();
       me = view;
       if (view.me) lastScore = view.me.score;
+      if (view.phase === "question" && pending == null) picked = { index: view.index, choice: view.choice, sure: true };
       render();
       if (game?.phase === "final" && me?.final) poller?.stop();   // nothing more will change
       return;
@@ -242,137 +249,196 @@ function renderLobby() {
   $("lobby-count").textContent = `${plural(game.players, "player")} in so far`;
 }
 
+/* The question is drawn once and then only updated in place: a screen
+ * redrawn under a finger swallows the tap, and options that move as the
+ * countdown ends take it to the wrong answer. */
 function renderQuestion(mine) {
   const q = game.question;
-  const choice = mine?.choice ?? pending;
   const size = q.prompt.length > 200 ? "q-l" : q.prompt.length > 110 ? "q-m" : "";
   const compact = Math.max(...q.options.map(o => o.length)) > 70 ? " compact" : "";
-  draw(`q:${game.index}:${choice}:${mine ? 1 : 0}`, () => `
-    ${header(lastScore, mine)}
+  draw(`q:${game.index}`, () => `
+    <div id="head"></div>
     <h2 class="${size}" style="margin-top:18px">${escapeHtml(q.prompt)}</h2>
     <div class="timer" id="timer" role="timer" aria-label="Question time remaining"><span id="bar"></span></div>
-    <div class="timer-meta"><span>One answer. Make it count.</span><span id="left">&nbsp;</span></div>
-    <div class="ready" id="ready" aria-live="polite"></div>
-    <div class="opts${compact}">
+    <div class="timer-meta"><span id="hint"></span><span id="left">&nbsp;</span></div>
+    <div class="opts${compact}" id="opts">
       ${q.options.map((o, i) => `
-        <button class="opt c${i}${choice === i ? " picked" : ""}" data-i="${i}" disabled>
+        <button class="opt c${i}" data-i="${i}" aria-pressed="false" disabled>
           <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}</span>
         </button>`).join("")}
+      <div class="countdown" id="countdown" aria-hidden="true"></div>
     </div>
-    <p class="status" id="status" role="status">${choice != null ? "✓ Answer locked in. Let's see how you did…" : ""}</p>
-    ${missionPanel(mine?.me?.streak || 0)}`,
+    <p class="status" id="status" role="status"></p>
+    <p class="tally" id="tally"></p>
+    <div id="mission"></div>`,
   () => {
     app.querySelectorAll("button.opt").forEach(b => { b.onclick = () => choose(Number(b.dataset.i)); });
+    lastSecond = null;
     ticker = setInterval(tickQuestion, 100);
-    tickQuestion();
   });
+  const choice = mine?.choice ?? pending;
+  swap("head", header(lastScore, mine));
+  swap("mission", missionPanel(mine?.me?.streak || 0));
+  $("opts").classList.toggle("locked", choice != null);
+  for (const b of app.querySelectorAll("button.opt")) {
+    const on = Number(b.dataset.i) === choice;
+    b.classList.toggle("picked", on);
+    b.classList.toggle("sending", on && sending);
+    b.setAttribute("aria-pressed", String(on));
+  }
+  tickQuestion();
 }
 
 function tickQuestion() {
   const q = game?.question;
   if (game?.phase !== "question" || !q) return clearInterval(ticker);
   const now = clock.now();
-  const locked = (me?.choice ?? pending) != null;
+  const choice = me?.choice ?? pending;
+  const locked = choice != null;
   const opensIn = q.opensAt - now;
   const remaining = q.deadline - now;
   const open = opensIn <= 0 && remaining > 0 && !locked;
   app.querySelectorAll("button.opt").forEach(b => { b.disabled = !open; });
-  const bar = $("bar");
-  const left = $("left");
-  const ready = $("ready");
+  const countdown = $("countdown");
   if (opensIn > 0) {
-    // 3, 2, 1 in big type while the options wait, then "Go!"
+    // 3, 2, 1 in big type over the waiting options, then "Go!"
     const n = String(Math.ceil(opensIn / 1000));
-    if (ready.textContent !== n) {
-      ready.textContent = n;
-      replay(ready, "go");
+    if (countdown.textContent !== n) {
+      countdown.textContent = n;
+      replay(countdown, "go");
     }
-  } else if (/^\d$/.test(ready.textContent)) {
-    ready.textContent = "Go!";
-    replay(ready, "go");
+  } else if (/^\d$/.test(countdown.textContent)) {
+    countdown.textContent = "Go!";
+    replay(countdown, "go");
     buzz(25);
-    setTimeout(() => { if (ready.isConnected) ready.textContent = ""; }, 700);
+    setTimeout(() => countdown.classList.add("done"), 600);
   }
-  if (opensIn > 0) {
-    bar.style.width = "100%";
-    left.textContent = "Get ready";
-  } else if (remaining > 0) {
-    bar.style.width = `${((remaining / q.limitMs) * 100).toFixed(1)}%`;
-    $("timer").classList.toggle("low", remaining < 5000);
-    left.textContent = locked ? "" : `${Math.ceil(remaining / 1000)}s left`;
-  } else {
-    bar.style.width = "0%";
-    left.textContent = "";
-    if (!locked) $("status").textContent = "Time's up! The answer is coming…";
+  const secs = Math.ceil(remaining / 1000);
+  setText($("hint"), locked ? "✓ Locked in" : opensIn > 0 ? "Get ready…" : remaining > 0 ? "Tap once to answer" : "Time's up!");
+  $("hint").classList.toggle("locked", locked);
+  setText($("left"), open ? `${secs}s` : "");
+  $("left").classList.toggle("urgent", open && remaining <= 5000);
+  $("bar").style.width = opensIn > 0 ? "100%" : `${Math.max(0, (remaining / q.limitMs) * 100).toFixed(1)}%`;
+  $("timer").classList.toggle("low", opensIn <= 0 && remaining < 5000);
+  setText($("status"), locked ? (sending ? "Sending your answer…" : `Answer ${LETTERS[choice]} is locked in.`)
+    : remaining <= 0 ? "Time's up! The answer is coming…" : "");
+  setText($("tally"), locked ? `${fmt(game.answered)} of ${plural(game.players, "player")} answered` : "");
+  if (open && secs !== lastSecond) {
+    if (secs <= 3 && lastSecond !== null) buzz(15);   // the last seconds, felt
+    lastSecond = secs;
   }
+}
+
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
 }
 
 async function choose(i) {
   const q = game.question;
+  const index = game.index;
   const now = clock.now();
   if (pending != null || me?.choice != null || now < q.opensAt) return;
   pending = i;
+  sending = true;
+  picked = { index, choice: i, sure: false };
   buzz(20);
   render();
   try {
     await api(`/api/games/${session.pin}/answers`, {
       method: "POST",
       token: session.token,
-      body: { playerId: session.playerId, index: game.index, choice: i, elapsedMs: Math.round(now - q.opensAt) }
+      body: { playerId: session.playerId, index, choice: i, elapsedMs: Math.round(now - q.opensAt) }
     });
+    if (picked?.index === index) picked.sure = true;
   } catch (err) {
-    if (err.code === "already_answered") return;
+    if (picked?.index === index) picked = null;   // unknown until the reveal says
     if (err.code === "kicked") return removed();
     if (err.code === "not_in_game") return lost();
-    pending = null;
-    toast(err.message);
-    render();
+    if (err.code !== "already_answered" && game?.index === index && game.phase === "question") {
+      pending = null;
+      toast(err.message);
+    }
   }
+  if (game?.index === index) sending = false;
+  render();
 }
 
+/* The verdict needs only this phone's own answer and the right one, so it
+ * shows with the reveal; the points, streak and rank follow when this
+ * phone's own view arrives. */
 function renderReveal(mine) {
   const q = game.question;
   const r = game.reveal;
   const res = mine?.result;
-  const streak = mine?.me?.streak ?? 0;
-  draw(`r:${game.index}:${res ? 1 : 0}`, () => {
+  const choice = res ? res.choice : picked?.index === game.index && picked.sure ? picked.choice : undefined;
+  const known = choice !== undefined;
+  const correct = known && choice === r.answer;
+  draw(`r:${game.index}:${known ? choice : "?"}`, () => {
     let verdict = `<div class="verdict"><h3 class="waiting-dots">Checking</h3></div>`;
-    if (res && res.choice === null) {
+    if (choice === null) {
       verdict = `<div class="verdict bad"><h3>Time's up</h3><p class="sub" style="margin:0">No answer this time.</p></div>`;
-    } else if (res?.correct) {
+    } else if (correct) {
       verdict = `
         <div class="verdict good">
           <h3>Correct!</h3>
-          <div class="burst">+<span id="burst">${fmt(res.points)}</span></div>
-          ${res.bonus ? `<p class="sub" style="margin:4px 0 0">including a streak bonus of +${fmt(res.bonus)}</p>` : ""}
-          ${streak >= 2 ? `<span class="streak-msg">🔥 ${streak} in a row!</span>` : ""}
+          <div class="burst">+<span id="burst">…</span></div>
+          <p class="sub" id="bonus" style="margin:4px 0 0"></p>
+          <span id="streak-msg"></span>
         </div>`;
-    } else if (res) {
+    } else if (known) {
       verdict = `<div class="verdict bad"><h3>Not this time</h3><p class="sub" style="margin:0">The right answer is marked below.</p></div>`;
     }
     return `
-      ${header(mine?.me?.score ?? lastScore, mine)}
+      <div id="head"></div>
       ${verdict}
       <div class="opts">
         ${q.options.map((o, i) => `
-          <button class="opt c${i}${i === r.answer ? " right" : i === res?.choice ? " wrong" : ""}" disabled>
-            <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}${i === r.answer ? '<small class="result-heading">Correct answer</small>' : i === res?.choice ? '<small class="result-heading">Your answer</small>' : ""}</span>
+          <button class="opt c${i}${i === r.answer ? " right" : i === choice ? " wrong" : ""}" disabled>
+            <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}${i === r.answer ? '<small class="result-heading">Correct answer</small>' : i === choice ? '<small class="result-heading">Your answer</small>' : ""}</span>
           </button>`).join("")}
       </div>
       ${r.explanation ? `<div class="card learning-note"><span class="eyebrow">A little more to know</span><p style="margin:0">${escapeHtml(r.explanation)}</p></div>` : ""}
-      ${missionPanel(streak)}
-      ${mine?.standing ? `<p class="status">You're ${ordinal(mine.standing.rank)} of ${mine.standing.of} ${moveHtml(mine.standing.move)}</p>` : ""}`;
-  }, () => {
-    if (res && celebrated !== screenKey) {
-      celebrated = screenKey;
-      announce(res.correct ? `Correct! You earned ${fmt(res.points)} points. ${streak} correct in a row.` : res.choice === null ? "Time's up. See the correct answer below." : "Not this time. See the correct answer below.");
-      buzz(res.correct ? [50] : [90, 60, 90]);
-      if (res.correct) {
-        countUp($("burst"), 0, res.points, 900);
-        if (streak >= 3) confetti(1500, 80);
-      }
+      <div id="mission"></div>
+      <p class="status" id="standing"></p>`;
+  }, null, known ? (correct ? "good" : "bad") : "");
+
+  const streak = mine?.me?.streak ?? 0;
+  swap("head", header(mine?.me?.score ?? lastScore, mine));
+  swap("mission", missionPanel(streak));
+  swap("standing", mine?.standing ? `You're ${ordinal(mine.standing.rank)} of ${mine.standing.of} ${moveHtml(mine.standing.move)}` : "");
+  if (known && once("verdict")) {
+    announce(correct ? "Correct!" : choice === null ? "Time's up. See the correct answer below." : "Not this time. See the correct answer below.");
+    buzz(correct ? [50] : [90, 60, 90]);
+  }
+  const burst = $("burst");
+  if (correct && res && burst && !shown.has(burst)) {
+    shown.set(burst, true);
+    if (res.bonus) $("bonus").textContent = `including a streak bonus of +${fmt(res.bonus)}`;
+    if (streak >= 2) swap("streak-msg", `<span class="streak-msg">🔥 ${streak} in a row!</span>`);
+    if (once("points")) {
+      countUp(burst, 0, res.points, 900);
+      announce(`You earned ${fmt(res.points)} points.`);
+      if (streak >= 3) confetti(1500, 80);
+    } else {
+      burst.textContent = fmt(res.points);
     }
-  }, res ? (res.correct ? "good" : "bad") : "");
+  }
+}
+
+/* Puts html into the element with this id, unless it is already there. */
+function swap(id, html) {
+  const el = $(id);
+  if (el && shown.get(el) !== html) {
+    el.innerHTML = html;
+    shown.set(el, html);
+  }
+}
+
+/* True the first time it is asked about tag on the current screen. */
+function once(tag) {
+  if (effects.has(tag)) return false;
+  effects.add(tag);
+  return true;
 }
 
 /* Restarts a CSS animation on el. */
@@ -427,8 +493,7 @@ function renderFinal(mine) {
       </div>`;
   }, () => {
     $("again")?.addEventListener("click", leave);
-    if (f && celebrated !== "final") {
-      celebrated = "final";
+    if (f && once("final")) {
       if (mine.standing.rank <= 3) confetti();
       buzz([60, 40, 60, 40, 140]);
     }
@@ -489,8 +554,10 @@ function clearSession() {
   me = null;
   screenKey = "";
   pending = null;
+  sending = false;
+  picked = null;
   lastScore = 0;
-  celebrated = "";
+  effects = new Set();
   try {
     localStorage.removeItem(SESSION_KEY);
   } catch {

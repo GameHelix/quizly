@@ -7,7 +7,7 @@
     "shuffleQuestions": true,
     "shuffleOptions": true,
     "basePoints": 500,
-    "speedBonus": 0,
+    "speedBonus": 500,
     "streakBonus": 100
   },
   "questions": [

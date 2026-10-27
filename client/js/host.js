@@ -292,10 +292,9 @@ function tick() {
   $("answered-label").textContent = secs > 0
     ? `of ${plural(game.players, "player")} answered`
     : `of ${plural(game.players, "player")} answered · revealing the answer…`;
+  // A calm clock, as on the phones: no red, no pulse, no ticking down the last seconds.
   clockEl.style.setProperty("--p", `${((remaining / q.limitMs) * 100).toFixed(1)}%`);
-  clockEl.classList.toggle("low", remaining > 0 && remaining <= 5000);
   if (secs !== lastSecond) {
-    if (secs > 0 && secs <= 5) sound.tick();
     if (secs === 0 && lastSecond !== null) sound.timeUp();
     lastSecond = secs;
   }

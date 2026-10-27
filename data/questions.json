@@ -3,11 +3,11 @@
   "title": "AI Quiz",
   "settings": {
     "questionsPerRound": 10,
-    "secondsPerQuestion": 20,
+    "secondsPerQuestion": 15,
     "shuffleQuestions": true,
     "shuffleOptions": true,
     "basePoints": 500,
-    "speedBonus": 500,
+    "speedBonus": 0,
     "streakBonus": 100
   },
   "questions": [

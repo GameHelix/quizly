@@ -52,14 +52,15 @@
   --fire: #c2410c;
   --shadow: 0 1px 2px rgba(23, 25, 30, .05), 0 6px 20px rgba(23, 25, 30, .06);
   --radius: 20px;
-  /* answer colours, one per option slot, deep enough for white text on a
-   * washed-out projector; letters carry the meaning too */
-  --c0: #c7473e;
-  --c1: #326fb2;
-  --c2: #9b6609;
-  --c3: #357b4c;
-  --c4: #7957b3;
-  --c5: #1f796e;
+  /* answer colours, one per option slot, in Kahoot's order: red, blue, yellow,
+   * green. Each is deep enough for its text on a washed-out projector: white,
+   * or dark on the yellow (see .c2). Letters carry the meaning too. */
+  --c0: #d81e3f;
+  --c1: #1368ce;
+  --c2: #f2b600;
+  --c3: #1f7f12;
+  --c4: #7a3fc4;
+  --c5: #0f7c74;
   color-scheme: light;
   box-sizing: border-box;
 }
@@ -144,25 +145,23 @@ button.big { width: 100%; font-size: 18px; padding: 16px 20px; }
 :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
 .opts { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; position: relative; }
+/* Answers are filled with their slot's colour, as in Kahoot and on the
+ * projector, so a phone and the big screen match at a glance. */
 button.opt {
   width: 100%; text-align: left; font-weight: 400; font-size: 17px;
-  color: var(--text); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  color: var(--on, #fff); background: var(--c); border: 1px solid transparent; box-shadow: 0 4px 0 #0000002b;
   padding: 18px; line-height: 1.4; display: flex; gap: 14px; align-items: flex-start;
   transition: transform .12s ease, border-color .12s ease, opacity .2s ease, filter .2s ease;
 }
 button.opt:active:not(:disabled) { transform: scale(.98); }
 button.opt .k {
-  font-weight: 700; color: #fff; min-width: 28px; height: 28px; border-radius: 8px;
+  font-weight: 700; background: #0000002b; min-width: 28px; height: 28px; border-radius: 8px;
   display: inline-grid; place-items: center; font-size: 14px; flex: 0 0 auto;
 }
-button.opt.right  { border-color: var(--good); background: var(--good-bg); opacity: 1; }
-button.opt.wrong  { border-color: #cfc6ee; background: #f6f4fc; opacity: 1; }   /* a miss is shown calmly: no red */
-.c0 .k, .k.c0 { background: var(--c0); }
-.c1 .k, .k.c1 { background: var(--c1); }
-.c2 .k, .k.c2 { background: var(--c2); }
-.c3 .k, .k.c3 { background: var(--c3); }
-.c4 .k, .k.c4 { background: var(--c4); }
-.c5 .k, .k.c5 { background: var(--c5); }
+button.opt.right, button.opt.wrong { opacity: 1; }
+/* each option slot's colour, and the text that reads on it */
+.c0 { --c: var(--c0); } .c1 { --c: var(--c1); } .c2 { --c: var(--c2); --on: #2b2200; }
+.c3 { --c: var(--c3); } .c4 { --c: var(--c4); } .c5 { --c: var(--c5); }
 
 .timer { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 18px 0 4px; }
 .timer > span { display: block; height: 100%; background: var(--accent); width: 100%; transition: width .1s linear; }
@@ -363,12 +362,11 @@ body.host { overflow-x: hidden; }
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: calc(var(--k) * clamp(12px, 1.4vw, 20px));
   border-radius: 18px; padding: calc(var(--k) * clamp(14px, 1.8vw, 28px));
-  font-size: calc(var(--k) * clamp(18px, 2.2vw, 34px)); line-height: 1.2; font-weight: 600; color: #fff;
+  font-size: calc(var(--k) * clamp(18px, 2.2vw, 34px)); line-height: 1.2; font-weight: 600;
+  color: var(--on, #fff); background: var(--c);
   min-height: calc(var(--k) * clamp(70px, 9vh, 130px)); box-shadow: 0 2px 8px rgba(23, 25, 30, .12);
   transition: opacity .3s ease, filter .3s ease;
 }
-.tile.c0 { background: var(--c0); } .tile.c1 { background: var(--c1); } .tile.c2 { background: var(--c2); }
-.tile.c3 { background: var(--c3); } .tile.c4 { background: var(--c4); } .tile.c5 { background: var(--c5); }
 .tile .k {
   font-weight: 800; background: rgba(0, 0, 0, .2); border-radius: 10px; flex: 0 0 auto;
   min-width: 1.7em; height: 1.7em; display: grid; place-items: center; font-size: .9em;
@@ -626,24 +624,32 @@ button.av.on { background: #e8f2d2; border-color: var(--forest); box-shadow: 0 0
 .timer-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .timer-meta #left { font-weight: 700; color: var(--forest); font-variant-numeric: tabular-nums; }
 .timer-meta #hint.locked { color: var(--forest); font-weight: 700; }
-button.opt { border-radius: 13px; min-height: 68px; font-weight: 500; font-size: 15px; align-items: center; justify-content: flex-start; border-left-width: 4px; }
-button.opt.c0 { border-left-color: var(--c0); } button.opt.c1 { border-left-color: var(--c1); } button.opt.c2 { border-left-color: var(--c2); } button.opt.c3 { border-left-color: var(--c3); } button.opt.c4 { border-left-color: var(--c4); } button.opt.c5 { border-left-color: var(--c5); }
+button.opt { border-radius: 13px; min-height: 68px; font-weight: 600; font-size: 15px; align-items: center; justify-content: flex-start; }
 /* A touch screen keeps :hover on the last option touched, where it must not
  * look like a choice: only a real pointer gets a hover. */
-button.opt:hover:not(:disabled) { background: var(--surface); box-shadow: var(--shadow); }
+button.opt:hover:not(:disabled) { background: var(--c); box-shadow: 0 4px 0 #0000002b; }
 @media (hover: hover) and (pointer: fine) {
-  button.opt:hover:not(:disabled) { background: var(--accent-bg); box-shadow: 0 4px 0 #1b302710; }
+  button.opt:hover:not(:disabled) { filter: brightness(1.08); }
 }
-/* One tap locks an answer in, and it has to look like it: the pick turns
- * solid and says so, and the other options step back. */
-button.opt.picked { background: var(--forest); border-color: var(--forest); color: #fff; opacity: 1; box-shadow: 0 0 0 3px var(--lime), 0 10px 24px #173f3033; animation: lockin .4s cubic-bezier(.2, 1.4, .4, 1); }
+/* One tap locks an answer in, and it has to look like it: the pick keeps its
+ * colour, gets a ring and says so, and the other options step back. */
+button.opt.picked { opacity: 1; box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--forest), 0 10px 24px #173f3033; animation: lockin .4s cubic-bezier(.2, 1.4, .4, 1); }
 button.opt.picked .k { box-shadow: 0 0 0 2px #fff; }
-button.opt.picked::after { content: "✓ Locked in"; flex: 0 0 auto; margin-left: auto; padding: 5px 10px; border-radius: 999px; background: var(--lime); color: var(--forest-dark); font-size: 12px; font-weight: 800; white-space: nowrap; }
-button.opt.picked.sending::after { content: "Sending…"; background: #ffffff2e; color: #fff; }
-button.opt.right::after { content: '✓'; font-weight: 800; margin-left: auto; color: var(--good); }
-button.opt.wrong::after { content: '×'; font-weight: 800; margin-left: auto; color: var(--purple); }
+button.opt.picked::after { content: "✓ Locked in"; flex: 0 0 auto; margin-left: auto; padding: 5px 10px; border-radius: 999px; background: #fff; color: var(--forest-dark); font-size: 12px; font-weight: 800; white-space: nowrap; }
+button.opt.picked.sending::after { content: "Sending…"; background: #0000002b; color: inherit; }
 button.opt:disabled:not(.picked):not(.right):not(.wrong) { opacity: .6; }
 .opts.locked button.opt:disabled:not(.picked) { opacity: .35; filter: grayscale(.7); box-shadow: none; }
+/* The reveal, as on the projector: the right answer keeps its colour and gets
+ * a tick, the others go grey, and a miss is shown calmly: no red. */
+.opts.reveal button.opt { background: #e5eadd; color: #4a574b; box-shadow: none; }
+.opts.reveal button.opt .k { background: #d4dccb; }
+.opts.reveal button.opt.right { background: var(--c); color: var(--on, #fff); box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--good); }
+.opts.reveal button.opt.right .k { background: #0000002b; }
+.opts.reveal button.opt.wrong { background: #f6f4fc; border-color: #cfc6ee; color: var(--text); }
+.opts.reveal button.opt.wrong .k { background: var(--c); color: var(--on, #fff); }
+button.opt.right::after { content: "✓"; display: grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; margin-left: auto; border-radius: 50%; background: #fff; color: var(--good); font-weight: 800; }
+button.opt.wrong::after { content: '×'; font-weight: 800; margin-left: auto; color: var(--purple); }
+button.opt .result-heading { margin-top: 2px; color: inherit; }
 .status { font-size: 12px; }
 .tally { min-height: 1.5em; margin: 2px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
 .verdict { padding: 24px 18px; border-radius: 18px; }

@@ -387,7 +387,7 @@ function renderReveal(mine) {
     return `
       <div id="head"></div>
       ${verdict}
-      <div class="opts">
+      <div class="opts reveal">
         ${q.options.map((o, i) => `
           <button class="opt c${i}${i === r.answer ? " right" : i === choice ? " wrong" : ""}" disabled>
             <span class="k">${LETTERS[i]}</span><span>${escapeHtml(o)}${i === r.answer ? '<small class="result-heading">Correct answer</small>' : i === choice ? '<small class="result-heading">Your answer</small>' : ""}</span>

@@ -1,10 +1,10 @@
 /* `npm run load-test -- --url https://your-app.vercel.app --players 60`
  *
  * Plays one whole game against a running Quizly with simulated phones that
- * behave like people: they join over a few seconds, poll about once a
- * second, answer at human speed, and some lock their screen for a while or
- * reload the page. One simulated host runs the game. At the end every score
- * is checked against the points each phone was told it earned.
+ * behave like people: they join over a few seconds, follow the game over its
+ * live stream as a browser does, answer at human speed, and some lock their
+ * screen for a while or reload the page. One simulated host runs the game. At
+ * the end every score is checked against the points each phone was told it earned.
  *
  *   --url        where Quizly runs                    (default http://localhost:3000)
  *   --password   the admin password                   (default $ADMIN_PASSWORD)
@@ -12,6 +12,7 @@
  *   --quiz       quiz id to play                      (default the first with questions)
  *   --questions  stop after this many                 (default all in the round)
  *   --flaky      share of phones that drop out a while (default 0.15)
+ *   --poll       phones poll about once a second instead, as where a stream cannot get through
  *
  * The game it creates is a real one: delete it from the admin panel's
  * Results tab afterwards if you ran this against production.
@@ -26,7 +27,8 @@ const { values: args } = parseArgs({
     players: { type: "string", default: "60" },
     quiz: { type: "string", default: "" },
     questions: { type: "string", default: "0" },
-    flaky: { type: "string", default: "0.15" }
+    flaky: { type: "string", default: "0.15" },
+    poll: { type: "boolean", default: false }
   }
 });
 const BASE = args.url.replace(/\/+$/, "");
@@ -39,6 +41,7 @@ const MAX_QUESTIONS = Number(args.questions) || Infinity;
 const timings = new Map();   // label → [ms]
 const failures = new Map();  // "label status" → count
 let requests = 0;
+let pushes = 0;              // states the live streams delivered
 
 async function call(label, method, path, { body, token, cookie } = {}) {
   const headers = {};
@@ -55,13 +58,17 @@ async function call(label, method, path, { body, token, cookie } = {}) {
     throw err;
   }
   const data = (res.headers.get("content-type") || "").includes("json") ? await res.json() : await res.text();
-  (timings.get(label) ?? timings.set(label, []).get(label)).push(performance.now() - t0);
+  record(label, performance.now() - t0);
   if (!res.ok) count(`${label} ${res.status}${data?.code ? " " + data.code : ""}`);
   return { status: res.status, data, headers: res.headers };
 }
 
 function count(key) {
   failures.set(key, (failures.get(key) ?? 0) + 1);
+}
+
+function record(label, ms) {
+  (timings.get(label) ?? timings.set(label, []).get(label)).push(ms);
 }
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -111,30 +118,83 @@ async function phone(p) {
   if (joined.status !== 201) return;
   p.playerId = joined.data.playerId;
   p.token = joined.data.token;
-  let dropped = false;
 
-  while (!finished || !p.final) {
-    // a flaky phone locks its screen for a while once, mid-game
-    if (p.flaky && !dropped && p.answered >= 2 && Math.random() < 0.3) {
-      dropped = true;
+  while (!p.final) {
+    if (p.away) {
+      p.away = false;
       await pause(jitter(8000));
       if (Math.random() < 0.5) p.key = "";   // half of them come back as a reload: everything refetched
     }
-    const state = await call("state", "GET", `/api/games/${pin}`).catch(() => null);
-    const s = state?.data;
-    if (state?.status === 200 && s) {
-      const key = `${s.phase}:${s.index}`;
-      if (key !== p.key) {
-        p.key = key;
-        const mine = await call("me", "GET", `/api/games/${pin}/players/${p.playerId}`, { token: p.token }).catch(() => null);
-        const me = mine?.data;
-        if (me?.result && me.phase === "reveal") p.earned.set(me.index, me.result.points);
-        if (me?.final) p.final = me;
-        if (s.phase === "question" && me?.phase === "question" && me.choice === null) answerLater(p, s);
+    await (args.poll ? pollOnce(p) : streamOnce(p));
+  }
+}
+
+/* True once for a flaky phone, mid-game: it locks its screen for a while. */
+function dropsOut(p) {
+  if (!p.flaky || p.dropped || p.answered < 2 || Math.random() >= 0.3) return false;
+  p.dropped = p.away = true;
+  return true;
+}
+
+/* A phone's part in each state: on a new screen it fetches its own view,
+ * and it answers an open question. */
+async function seen(p, s) {
+  const key = `${s.phase}:${s.index}`;
+  if (key === p.key) return;
+  p.key = key;
+  const mine = await call("me", "GET", `/api/games/${pin}/players/${p.playerId}`, { token: p.token }).catch(() => null);
+  const me = mine?.data;
+  if (me?.result && me.phase === "reveal") p.earned.set(me.index, me.result.points);
+  if (me?.final) p.final = me;
+  if (s.phase === "question" && me?.phase === "question" && me.choice === null) answerLater(p, s);
+}
+
+async function pollOnce(p) {
+  if (dropsOut(p)) return;
+  const state = await call("state", "GET", `/api/games/${pin}`).catch(() => null);
+  if (state?.status === 200 && state.data) await seen(p, state.data);
+  if (!p.final) await pause(jitter(1000, 0.2));
+}
+
+/* One live stream, held as a browser holds it: every state the server
+ * sends, until the server ends it or the phone drops out. */
+async function streamOnce(p) {
+  const t0 = performance.now();
+  requests += 1;
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/games/${pin}/live`);
+  } catch {
+    count("live network");
+    return pause(1000);
+  }
+  record("live (opening)", performance.now() - t0);
+  if (!res.ok) {
+    count(`live ${res.status}`);
+    await res.body?.cancel();
+    return pause(1000);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      for (let end = buffer.indexOf("\n\n"); end >= 0; end = buffer.indexOf("\n\n")) {
+        const message = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        if (!message.startsWith("data: ")) continue;   // a ping
+        pushes += 1;
+        await seen(p, JSON.parse(message.slice(6)));
+        if (p.final || dropsOut(p)) return;
       }
-      if (s.phase === "final" && p.final) return;
     }
-    await pause(jitter(1000, 0.2));
+  } catch {
+    count("live dropped");
+  } finally {
+    reader.cancel().catch(() => {});
   }
 }
 
@@ -205,7 +265,7 @@ const ranksOk = ranks.every((r, i) => r === i + 1);
 
 /* ---------- report ---------- */
 
-console.log(`\n${joined.length}/${PLAYERS} phones joined · ${withFinal.length} reached the final screen · ${seconds.toFixed(0)}s · ${requests} requests (${(requests / seconds).toFixed(1)}/s)`);
+console.log(`\n${joined.length}/${PLAYERS} phones joined · ${withFinal.length} reached the final screen · ${seconds.toFixed(0)}s · ${requests} requests (${(requests / seconds).toFixed(1)}/s)${args.poll ? "" : ` · ${pushes} states pushed`}`);
 console.log("\nlatency (ms)         count     p50     p95     p99     max");
 for (const [label, list] of [...timings].sort()) {
   console.log(`${label.padEnd(18)} ${String(list.length).padStart(7)} ${[50, 95, 99].map(p => pct(list, p).toFixed(0).padStart(7)).join(" ")} ${Math.max(...list).toFixed(0).padStart(7)}`);

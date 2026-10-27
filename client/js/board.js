@@ -6,8 +6,8 @@
 
 import { confetti } from "./fx.js";
 import { brand, footer, icon, siteHeader, trophyArt } from "./design.js";
-import { renderBoard } from "./leaderboard.js";
-import { getState, poll } from "./live.js";
+import { climberHtml, renderBoard } from "./leaderboard.js";
+import { live } from "./live.js";
 import { $, escapeHtml, fitToScreen, keepFitting, plural } from "./ui.js";
 
 const app = $("app");
@@ -29,7 +29,7 @@ function open() {
   rosterJson = "";
   const pin = location.hash.slice(1);
   if (!/^\d{6}$/.test(pin)) return ask();
-  poller = poll(async () => show(await getState(`/api/games/${pin}`)), 1500, {
+  poller = live(`/api/games/${pin}`, show, {
     onError: err => {
       if (err.status === 404) ask("No game with that PIN is running.");
     }
@@ -106,7 +106,9 @@ function show(game) {
     draw("board", () => `
       <div class="stage">
         ${head}
-        <h1 class="hq" id="board-title">A little friendly rivalry.</h1><div class="board-column-head"><span>The leaderboard</span><span>Points</span></div>
+        <h1 class="hq" id="board-title">A little friendly rivalry.</h1>
+        <p class="spotlight hidden" id="climber"></p>
+        <div class="board-column-head"><span>The leaderboard</span><span>Points</span></div>
         <ol class="board" id="board"></ol>
         <div class="awards" id="awards"></div>
         <p class="note" id="empty"></p>
@@ -119,6 +121,9 @@ function show(game) {
     if (json !== boardJson) {
       boardJson = json;
       renderBoard($("board"), rows);
+      const climber = game.phase === "final" ? "" : climberHtml(rows);
+      $("climber").innerHTML = climber;
+      $("climber").classList.toggle("hidden", !climber);
       fitToScreen();
     }
     $("empty").textContent = rows.length ? "" : "The standings appear after the first question.";

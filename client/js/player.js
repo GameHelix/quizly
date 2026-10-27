@@ -12,7 +12,7 @@ import { AVATARS, LETTERS, NICKNAME_MAX } from "/shared/quiz.js";
 import { buzz, confetti, countUp } from "./fx.js";
 import { brand, footer, icon, missionPanel, progressRail, siteHeader, trophyArt } from "./design.js";
 import { moveHtml } from "./leaderboard.js";
-import { clock, getState, poll } from "./live.js";
+import { clock, getState, live } from "./live.js";
 import { $, announce, api, askDialog, escapeHtml, fmt, keepAwake, ordinal, plural, toast } from "./ui.js";
 
 const app = $("app");
@@ -28,6 +28,7 @@ let pending = null;                     // a choice tapped on this screen
 let sending = false;                    // …and still on its way to the server
 let picked = null;                      // { index, choice, sure }: this phone's answer, carried into the reveal
 let lastScore = 0;
+let streakBefore = 0;                   // the streak going into the latest question, to tell a player it ended
 let lastSecond = null;
 let effects = new Set();                // celebrations already played on this screen
 let poller = null;
@@ -145,8 +146,8 @@ function follow() {
   stop();
   keepAwake();
   render();
-  poller = poll(async () => {
-    game = await getState(`/api/games/${session.pin}`);
+  poller = live(`/api/games/${session.pin}`, state => {
+    game = state;
     const key = `${game.status}:${game.phase}:${game.index}`;
     if (key !== screenKey) {
       screenKey = key;
@@ -157,7 +158,7 @@ function follow() {
       loadMe(key);
     }
     render();
-  }, 1000, {
+  }, {
     onError: err => {
       if (err.status === 404) ended("This game has ended.");
     }
@@ -172,6 +173,7 @@ async function loadMe(key) {
       if (view.kicked) return removed();
       me = view;
       if (view.me) lastScore = view.me.score;
+      if (view.me && view.phase !== "reveal") streakBefore = view.me.streak;
       if (view.phase === "question" && pending == null) picked = { index: view.index, choice: view.choice, sure: true };
       render();
       if (game?.phase === "final" && me?.final) poller?.stop();   // nothing more will change
@@ -374,19 +376,21 @@ function renderReveal(mine) {
   const known = choice !== undefined;
   const correct = known && choice === r.answer;
   draw(`r:${game.index}:${known ? choice : "?"}`, () => {
+    const lost = streakBefore >= 2 ? `<p class="streak-lost">💔 Your streak of ${streakBefore} has ended</p>` : "";
     let verdict = `<div class="verdict"><h3 class="waiting-dots">Checking</h3></div>`;
     if (choice === null) {
-      verdict = `<div class="verdict bad"><h3>Time's up</h3><p class="sub" style="margin:0">No answer this time.</p></div>`;
+      verdict = `<div class="verdict bad"><h3>Time's up</h3><p class="sub" style="margin:0">No answer this time.</p>${lost}</div>`;
     } else if (correct) {
       verdict = `
         <div class="verdict good">
           <h3>Correct!</h3>
           <div class="burst">+<span id="burst">…</span></div>
-          <p class="sub" id="bonus" style="margin:4px 0 0"></p>
+          <p class="breakdown" id="breakdown"></p>
+          ${r.fastest?.playerId === session.playerId ? `<span class="streak-msg">⚡ Fastest in the room!</span>` : ""}
           <span id="streak-msg"></span>
         </div>`;
     } else if (known) {
-      verdict = `<div class="verdict bad"><h3>Not this time</h3><p class="sub" style="margin:0">The right answer is marked below.</p></div>`;
+      verdict = `<div class="verdict bad"><h3>Not this time</h3><p class="sub" style="margin:0">The right answer is marked below.</p>${lost}</div>`;
     }
     return `
       <div id="head"></div>
@@ -413,7 +417,13 @@ function renderReveal(mine) {
   const burst = $("burst");
   if (correct && res && burst && !shown.has(burst)) {
     shown.set(burst, true);
-    if (res.bonus) $("bonus").textContent = `including a streak bonus of +${fmt(res.bonus)}`;
+    // where the points came from, so speed and streaks visibly pay
+    const speed = res.points - res.base - res.bonus;
+    if (res.base != null) {
+      swap("breakdown", [`+${fmt(res.base)} correct`, speed > 0 && `+${fmt(speed)} speed`,
+        res.bonus > 0 && `+${fmt(res.bonus)} streak`, res.ms != null && `in ${(res.ms / 1000).toFixed(1)} s`]
+        .filter(Boolean).map(t => `<span>${t}</span>`).join(""));
+    }
     if (streak >= 2) swap("streak-msg", `<span class="streak-msg">🔥 ${streak} in a row!</span>`);
     if (once("points")) {
       countUp(burst, 0, res.points, 900);
@@ -457,14 +467,19 @@ function renderStanding(mine) {
       ${s ? `
         <div class="rank">${ordinal(s.rank)}</div>
         <p class="sub">of ${s.of} · ${fmt(mine.me.score)} points ${moveHtml(s.move)}</p>
-        <p>${s.ahead
-          ? `${fmt(s.ahead.gap)} points behind ${escapeHtml(s.ahead.avatar)} ${escapeHtml(s.ahead.nickname)}`
-          : "You're in the lead! 🏆"}</p>
+        <p>${!s.ahead ? "You're in the lead! 🏆"
+          : s.ahead.gap > 0 ? `${plural(s.ahead.gap, "point")} behind ${who(s.ahead)}`
+          : `Level with ${who(s.ahead)}: speed decides`}</p>
+        ${s.behind ? `<p class="sub">${who(s.behind)} is ${s.behind.gap > 0 ? `${plural(s.behind.gap, "point")} behind you` : "level with you"}</p>` : ""}
         ${mine.me.streak >= 2 ? `<p><span class="pill fire">🔥 ${mine.me.streak} right in a row</span></p>` : ""}`
       : `<h1 class="waiting-dots">Counting</h1>`}
       <p class="note">Next question coming up — eyes on the big screen.</p>
       ${progressRail(game.index, game.total, game.phase)}${missionPanel(mine?.me?.streak || 0)}
     </div>`);
+}
+
+function who(p) {
+  return `${escapeHtml(p.avatar)} ${escapeHtml(p.nickname)}`;
 }
 
 function renderFinal(mine) {
@@ -557,6 +572,7 @@ function clearSession() {
   sending = false;
   picked = null;
   lastScore = 0;
+  streakBefore = 0;
   effects = new Set();
   try {
     localStorage.removeItem(SESSION_KEY);

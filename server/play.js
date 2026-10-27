@@ -353,10 +353,12 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
   }
 
   /* publicView, reused for half a second within this process: sixty phones
-   * polling every second cost the database a couple of queries, not sixty. */
+   * polling every second cost the database a couple of queries, not sixty.
+   * The time is stamped as it is sent: phones set their clocks by it, and a
+   * reused view's own stamp would put them up to half a second behind. */
   async function publicState(pin) {
     const hit = viewCache.get(pin);
-    if (hit && Date.now() - hit.at < VIEW_CACHE_MS) return hit.view;
+    if (hit && Date.now() - hit.at < VIEW_CACHE_MS) return hit.view && { ...hit.view, now: Date.now() };
     const game = await current(pin);
     const view = game ? await publicView(game) : null;
     if (viewCache.size > 1000) viewCache.clear();

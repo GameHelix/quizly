@@ -99,7 +99,7 @@ test("quizzes are imported, edited and validated", async () => {
 
   // Out-of-range settings are clamped, not stored as given.
   const settings = await admin("PUT", `/api/admin/quizzes/${quizId}/settings`,
-    { ...sample.settings, secondsPerQuestion: 1, questionsPerRound: 3, shuffleQuestions: false });
+    { ...sample.settings, speedBonus: 500, secondsPerQuestion: 1, questionsPerRound: 3, shuffleQuestions: false });
   assert.equal(settings.data.settings.secondsPerQuestion, 5);
   assert.equal(settings.data.settings.questionsPerRound, 3);
 

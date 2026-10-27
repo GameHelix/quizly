@@ -353,7 +353,6 @@ body.host { overflow-x: hidden; }
 }
 .clock::before { content: ""; position: absolute; inset: calc(var(--k) * 8px); border-radius: 50%; background: var(--surface); box-shadow: inset 0 1px 3px rgba(23, 25, 30, .08); }
 .clock span { position: relative; }
-.clock.low { background: conic-gradient(var(--bad) var(--p, 100%), var(--surface-2) 0); animation: pulse 1s ease-in-out infinite; }
 .answered-big { font-size: calc(var(--k) * clamp(18px, 2vw, 28px)); color: var(--muted); }
 .answered-big b { font-size: calc(var(--k) * clamp(40px, 5vw, 76px)); color: var(--text); font-family: "Space Grotesk", Inter, sans-serif; font-weight: 400; display: block; line-height: 1; }
 .answered-big.leadin b { color: var(--accent-text); }
@@ -694,7 +693,6 @@ kbd { display: inline-block; min-width: 23px; border: 1px solid #d6ddce; border-
 .stage .hbar > button .icon { width: 17px; }
 .stage .hq { font-weight: 600; }
 .stage .clock { color: var(--forest); background: conic-gradient(var(--forest) var(--p, 100%), var(--surface-2) 0); }
-.stage .clock.low { color: var(--bad); background: conic-gradient(var(--bad) var(--p, 100%), var(--surface-2) 0); }
 .stage .answered-big b { font-weight: 600; letter-spacing: -.04em; }
 .stage .joincard { border-top: 5px solid var(--forest); box-shadow: 0 5px 0 #e6ecdc; }
 .stage .joincard .qr { width: min(100%, calc(var(--k) * 250px)); margin-top: 16px; }

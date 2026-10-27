@@ -181,9 +181,9 @@ A quiz is imported and exported as JSON — `data/questions.json` is one:
   "version": 1,
   "title": "AI Quiz",
   "settings": {
-    "questionsPerRound": 10, "secondsPerQuestion": 20,
+    "questionsPerRound": 10, "secondsPerQuestion": 15,
     "shuffleQuestions": true, "shuffleOptions": true,
-    "basePoints": 500, "speedBonus": 500, "streakBonus": 100
+    "basePoints": 500, "speedBonus": 0, "streakBonus": 100
   },
   "questions": [{
     "id": "q01", "category": "Basics", "difficulty": "easy",

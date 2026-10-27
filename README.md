@@ -66,7 +66,7 @@ client/               the browser: four pages, their scripts, the stylesheet, th
 data/questions.json   a ready-made AI quiz in the import format — not read at runtime
 scripts/              build, migrate, seed, load-test, abuse-test
 test/                 rules and full-API tests (node --test)
-neon.ts               the Neon project's branch policy, applied with `neon deploy`
+neon.js               the Neon project's branch policy, applied with `neon deploy`
 vercel.json           build, rewrites, region and security headers for Vercel
 assets/               presentation images; not part of the app and not deployed
 ```
@@ -171,10 +171,10 @@ A quiz is imported and exported as JSON — `data/questions.json` is one:
     "basePoints": 500, "speedBonus": 500, "streakBonus": 100
   },
   "questions": [{
-    "id": "q01", "category": "Fundamentals", "difficulty": "easy",
-    "prompt": "What does the \"GPT\" in GPT stand for?",
+    "id": "q01", "category": "Basics", "difficulty": "easy",
+    "prompt": "ChatGPT, Gemini and Copilot are examples of…",
     "options": ["…", "…", "…", "…"],
-    "answer": 1,
+    "answer": 0,
     "explanation": "Shown after the reveal."
   }]
 }

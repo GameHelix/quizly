@@ -9,7 +9,7 @@
 import { LETTERS } from "/shared/quiz.js";
 import { brand, footer, icon, progressRail, siteHeader, trophyArt } from "./design.js";
 import { bump, confetti, sound } from "./fx.js";
-import { climberHtml, renderBoard } from "./leaderboard.js";
+import { TOP, climberHtml, renderBoard } from "./leaderboard.js";
 import { clock, live } from "./live.js";
 import { $, adminGate, api, askDialog, copyText, escapeHtml, fitToScreen, fmt, keepAwake, keepFitting, plural, toast } from "./ui.js";
 
@@ -359,7 +359,7 @@ function scoreboard(key) {
         <button id="next">Next question →</button>
       </div>
     </div>`, () => {
-    renderBoard($("board"), (game.leaderboard || []).slice(0, 10));
+    renderBoard($("board"), (game.leaderboard || []).slice(0, TOP));
     fitToScreen();
     // A name that should not be on a projector can go from here too.
     $("board").onclick = async e => {
@@ -407,7 +407,7 @@ function final(key) {
       history.replaceState(null, "", location.pathname);
       renderCreate();
     };
-    if ($("rest")) renderBoard($("rest"), lb.slice(3, 10), { gains: false });
+    if ($("rest")) renderBoard($("rest"), lb.slice(3, TOP), { gains: false });
     fitToScreen();
     // In time with first place rising onto the podium.
     setTimeout(() => {

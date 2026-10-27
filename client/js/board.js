@@ -6,7 +6,7 @@
 
 import { confetti } from "./fx.js";
 import { brand, footer, icon, siteHeader, trophyArt } from "./design.js";
-import { climberHtml, renderBoard } from "./leaderboard.js";
+import { TOP, climberHtml, renderBoard } from "./leaderboard.js";
 import { live } from "./live.js";
 import { $, escapeHtml, fitToScreen, keepFitting, plural } from "./ui.js";
 
@@ -120,8 +120,8 @@ function show(game) {
     const json = JSON.stringify(rows);
     if (json !== boardJson) {
       boardJson = json;
-      renderBoard($("board"), rows);
-      const climber = game.phase === "final" ? "" : climberHtml(rows);
+      renderBoard($("board"), rows.slice(0, TOP));
+      const climber = game.phase === "final" ? "" : climberHtml(rows);   // anyone may climb, not just the top
       $("climber").innerHTML = climber;
       $("climber").classList.toggle("hidden", !climber);
       fitToScreen();

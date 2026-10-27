@@ -11,7 +11,7 @@
 import { AVATARS, LETTERS, NICKNAME_MAX } from "/shared/quiz.js";
 import { buzz, confetti, countUp } from "./fx.js";
 import { brand, footer, icon, missionPanel, progressRail, siteHeader, trophyArt } from "./design.js";
-import { moveHtml } from "./leaderboard.js";
+import { moveHtml, tier } from "./leaderboard.js";
 import { clock, getState, live } from "./live.js";
 import { $, announce, api, askDialog, escapeHtml, fmt, keepAwake, ordinal, plural, toast } from "./ui.js";
 
@@ -28,8 +28,6 @@ let pending = null;                     // a choice tapped on this screen
 let sending = false;                    // …and still on its way to the server
 let picked = null;                      // { index, choice, sure }: this phone's answer, carried into the reveal
 let lastScore = 0;
-let streakBefore = 0;                   // the streak going into the latest question, to tell a player it ended
-let lastSecond = null;
 let effects = new Set();                // celebrations already played on this screen
 let poller = null;
 let ticker = null;
@@ -173,7 +171,6 @@ async function loadMe(key) {
       if (view.kicked) return removed();
       me = view;
       if (view.me) lastScore = view.me.score;
-      if (view.me && view.phase !== "reveal") streakBefore = view.me.streak;
       if (view.phase === "question" && pending == null) picked = { index: view.index, choice: view.choice, sure: true };
       render();
       if (game?.phase === "final" && me?.final) poller?.stop();   // nothing more will change
@@ -202,7 +199,7 @@ function render() {
 }
 
 /* Draws html() unless the same fingerprint is already on screen. mood tints
- * the whole page: "good" or "bad" at a reveal, nothing otherwise. */
+ * the whole page: "good" or "calm" at a reveal, nothing otherwise. */
 function draw(fingerprint, html, after, mood = "") {
   if (fingerprint !== drawn) {
     const newPhase = fingerprint.split(":")[0] !== drawn.split(":")[0];
@@ -275,7 +272,6 @@ function renderQuestion(mine) {
     <div id="mission"></div>`,
   () => {
     app.querySelectorAll("button.opt").forEach(b => { b.onclick = () => choose(Number(b.dataset.i)); });
-    lastSecond = null;
     ticker = setInterval(tickQuestion, 100);
   });
   const choice = mine?.choice ?? pending;
@@ -318,17 +314,12 @@ function tickQuestion() {
   const secs = Math.ceil(remaining / 1000);
   setText($("hint"), locked ? "✓ Locked in" : opensIn > 0 ? "Get ready…" : remaining > 0 ? "Tap once to answer" : "Time's up!");
   $("hint").classList.toggle("locked", locked);
+  // A calm clock: no red, no buzz in the last seconds — this is a quiz over lunch.
   setText($("left"), open ? `${secs}s` : "");
-  $("left").classList.toggle("urgent", open && remaining <= 5000);
   $("bar").style.width = opensIn > 0 ? "100%" : `${Math.max(0, (remaining / q.limitMs) * 100).toFixed(1)}%`;
-  $("timer").classList.toggle("low", opensIn <= 0 && remaining < 5000);
   setText($("status"), locked ? (sending ? "Sending your answer…" : `Answer ${LETTERS[choice]} is locked in.`)
     : remaining <= 0 ? "Time's up! The answer is coming…" : "");
   setText($("tally"), locked ? `${fmt(game.answered)} of ${plural(game.players, "player")} answered` : "");
-  if (open && secs !== lastSecond) {
-    if (secs <= 3 && lastSecond !== null) buzz(15);   // the last seconds, felt
-    lastSecond = secs;
-  }
 }
 
 function setText(el, text) {
@@ -376,21 +367,22 @@ function renderReveal(mine) {
   const known = choice !== undefined;
   const correct = known && choice === r.answer;
   draw(`r:${game.index}:${known ? choice : "?"}`, () => {
-    const lost = streakBefore >= 2 ? `<p class="streak-lost">💔 Your streak of ${streakBefore} has ended</p>` : "";
+    // A miss is part of learning: calm colours, a kind word, and how the room did.
     let verdict = `<div class="verdict"><h3 class="waiting-dots">Checking</h3></div>`;
     if (choice === null) {
-      verdict = `<div class="verdict bad"><h3>Time's up</h3><p class="sub" style="margin:0">No answer this time.</p>${lost}</div>`;
+      verdict = `<div class="verdict calm"><h3>Time's up</h3><p class="sub" style="margin:0">No problem: the right answer is marked below.</p>${roomLine(r, false)}</div>`;
     } else if (correct) {
       verdict = `
         <div class="verdict good">
           <h3>Correct!</h3>
           <div class="burst">+<span id="burst">…</span></div>
           <p class="breakdown" id="breakdown"></p>
+          ${roomLine(r, true)}
           ${r.fastest?.playerId === session.playerId ? `<span class="streak-msg">⚡ Fastest in the room!</span>` : ""}
           <span id="streak-msg"></span>
         </div>`;
     } else if (known) {
-      verdict = `<div class="verdict bad"><h3>Not this time</h3><p class="sub" style="margin:0">The right answer is marked below.</p>${lost}</div>`;
+      verdict = `<div class="verdict calm"><h3>Good try!</h3><p class="sub" style="margin:0">Now you know: the right answer is marked below.</p>${roomLine(r, false)}</div>`;
     }
     return `
       <div id="head"></div>
@@ -404,15 +396,17 @@ function renderReveal(mine) {
       ${r.explanation ? `<div class="card learning-note"><span class="eyebrow">A little more to know</span><p style="margin:0">${escapeHtml(r.explanation)}</p></div>` : ""}
       <div id="mission"></div>
       <p class="status" id="standing"></p>`;
-  }, null, known ? (correct ? "good" : "bad") : "");
+  }, null, known ? (correct ? "good" : "calm") : "");
 
   const streak = mine?.me?.streak ?? 0;
+  const s = mine?.standing;
   swap("head", header(mine?.me?.score ?? lastScore, mine));
   swap("mission", missionPanel(streak));
-  swap("standing", mine?.standing ? `You're ${ordinal(mine.standing.rank)} of ${mine.standing.of} ${moveHtml(mine.standing.move)}` : "");
+  swap("standing", !s ? "" : tier(s) === "top" ? `You're ${ordinal(s.rank)} of ${s.of} ${moveHtml(Math.max(0, s.move))}`
+    : tier(s) === "half" ? `You're in the top half ${moveHtml(Math.max(0, s.move))}` : "");
   if (known && once("verdict")) {
-    announce(correct ? "Correct!" : choice === null ? "Time's up. See the correct answer below." : "Not this time. See the correct answer below.");
-    buzz(correct ? [50] : [90, 60, 90]);
+    announce(correct ? "Correct!" : choice === null ? "Time's up. The right answer is marked below." : "Good try. The right answer is marked below.");
+    if (correct) buzz([50]);
   }
   const burst = $("burst");
   if (correct && res && burst && !shown.has(burst)) {
@@ -433,6 +427,16 @@ function renderReveal(mine) {
       burst.textContent = fmt(res.points);
     }
   }
+}
+
+/* How the room did on this question, so a miss feels normal and a hit feels shared. */
+function roomLine(r, correct) {
+  if (!r.answered) return "";
+  const pct = Math.round((r.correct / r.answered) * 100);
+  const text = correct
+    ? pct === 100 ? "Everyone got it right! 🙌" : pct < 50 ? `Only ${pct}% got it right. Well done!` : `${pct}% got it right, you too!`
+    : pct === 0 ? "Nobody got this one. Tricky!" : pct < 50 ? `Only ${pct}% got it right. A tricky one!` : `${pct}% got it right. Now you know too!`;
+  return `<p class="room">${text}</p>`;
 }
 
 /* Puts html into the element with this id, unless it is already there. */
@@ -465,8 +469,8 @@ function renderStanding(mine) {
       <div class="face">${escapeHtml(session.avatar)}</div>
       <p class="eyebrow">After question ${game.index + 1} of ${game.total}</p>
       ${s ? `
-        <div class="rank">${ordinal(s.rank)}</div>
-        <p class="sub">of ${s.of} · ${fmt(mine.me.score)} points ${moveHtml(s.move)}</p>
+        ${placeHtml(s, "Keep going!")}
+        <p class="sub">${tier(s) === "top" ? `of ${s.of} · ` : ""}${fmt(mine.me.score)} points ${moveHtml(Math.max(0, s.move))}</p>
         <p>${!s.ahead ? "You're in the lead! 🏆"
           : s.ahead.gap > 0 ? `${plural(s.ahead.gap, "point")} behind ${who(s.ahead)}`
           : `Level with ${who(s.ahead)}: speed decides`}</p>
@@ -482,6 +486,14 @@ function who(p) {
   return `${escapeHtml(p.avatar)} ${escapeHtml(p.nickname)}`;
 }
 
+/* The big line for where a player stands: an exact place in the top few,
+ * "Top half" below that, and further down just a kind word. */
+function placeHtml(s, kind) {
+  const t = tier(s);
+  return t === "top" ? `<div class="rank">${ordinal(s.rank)}</div>`
+    : `<div class="rank tier">${t === "half" ? "Top half" : kind}</div>`;
+}
+
 function renderFinal(mine) {
   const f = mine?.final;
   draw(`final:${f ? 1 : 0}`, () => {
@@ -491,8 +503,8 @@ function renderFinal(mine) {
       <div class="hero">
         <div class="face">${escapeHtml(session.avatar)}</div>
         <p class="eyebrow">${escapeHtml(game.title)} · final</p>
-        <span class="result-heading">${s.rank === 1 ? "You took the crown!" : s.rank <= 3 ? "A podium finish. Nicely played!" : "That's a wrap. Nicely played!"}</span><div class="rank">${ordinal(s.rank)}</div>
-        <p class="sub">of ${s.of} · ${fmt(mine.me.score)} points</p>
+        <span class="result-heading">${s.rank === 1 ? "You took the crown!" : s.rank <= 3 ? "A podium finish. Nicely played!" : "That's a wrap. Nicely played!"}</span>${placeHtml(s, "Well played!")}
+        <p class="sub">${tier(s) === "top" ? `of ${s.of} · ` : ""}${fmt(mine.me.score)} points</p>
         <div class="stats">
           <div class="stat"><b>${f.played ? Math.round((f.correct / f.played) * 100) : 0}%</b><span>${f.correct} of ${f.played} right</span></div>
           <div class="stat"><b>🔥 ${f.bestStreak}</b><span>best streak</span></div>
@@ -572,7 +584,6 @@ function clearSession() {
   sending = false;
   picked = null;
   lastScore = 0;
-  streakBefore = 0;
   effects = new Set();
   try {
     localStorage.removeItem(SESSION_KEY);

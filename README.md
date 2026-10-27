@@ -31,7 +31,12 @@ panel at `/admin`. Vercel project `quizly` in the PRE team; database on Neon.
   streak, 📈 comeback since half-time) and badges on each phone (🏆 💯 …). After each
   question the projector names the fastest right answer and the leaderboard the biggest
   climber; each phone shows where its points came from (correct, speed, streak, time),
-  a streak that ended, and who it is chasing and who is chasing it.
+  how the room did ("Only 20% got it right. A tricky one!"), and who it is chasing and
+  who is chasing it.
+- **Calm by design** — made for a lunch-and-learn: a miss reads "Good try! Now you know"
+  in calm colours, the phone's clock never turns red or buzzes, and ranks are named only
+  at the top: the projector lists the top five, and a phone further down hears "Top half"
+  or "Keep going!" instead of "38th of 50".
 
 ## Interface and game experience
 

@@ -9,6 +9,16 @@ import { escapeHtml } from "./ui.js";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
+// Places shown by name: the projector lists this many, and a phone tells its
+// player an exact place only inside them. A lunch-time quiz is no place to
+// learn you came 38th of 50.
+export const TOP = 5;
+
+/* "top" for an exact place, "half" for the rest of the top half, "rest" below. */
+export function tier({ rank, of }) {
+  return rank <= TOP ? "top" : rank <= Math.ceil(of / 2) ? "half" : "rest";
+}
+
 export function renderBoard(list, rows, { gains = true } = {}) {
   const before = new Map([...list.children].map(li => [li.dataset.id, li.getBoundingClientRect().top]));
   const kept = new Map([...list.children].map(li => [li.dataset.id, li]));

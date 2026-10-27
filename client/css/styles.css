@@ -156,7 +156,7 @@ button.opt .k {
   display: inline-grid; place-items: center; font-size: 14px; flex: 0 0 auto;
 }
 button.opt.right  { border-color: var(--good); background: var(--good-bg); opacity: 1; }
-button.opt.wrong  { border-color: var(--bad);  background: var(--bad-bg); opacity: 1; }
+button.opt.wrong  { border-color: #cfc6ee; background: #f6f4fc; opacity: 1; }   /* a miss is shown calmly: no red */
 .c0 .k, .k.c0 { background: var(--c0); }
 .c1 .k, .k.c1 { background: var(--c1); }
 .c2 .k, .k.c2 { background: var(--c2); }
@@ -166,7 +166,6 @@ button.opt.wrong  { border-color: var(--bad);  background: var(--bad-bg); opacit
 
 .timer { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 18px 0 4px; }
 .timer > span { display: block; height: 100%; background: var(--accent); width: 100%; transition: width .1s linear; }
-.timer.low > span { background: var(--bad); }
 
 label { display: block; font-size: 13px; font-weight: 600; letter-spacing: 1px;
         text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
@@ -270,15 +269,15 @@ h2.q-l { font-size: clamp(18px, 3vw, 23px); }
 .trail { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; max-width: 46vw; }
 .trail i { width: 9px; height: 9px; border-radius: 50%; background: var(--surface-2); display: block; }
 .trail i.ok { background: var(--good); }
-.trail i.no { background: var(--bad); }
+.trail i.no { background: #c9bfe9; }
 .trail i.now { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
 
 /* the reveal: the whole screen says how it went */
 body[data-mood="good"] { background: radial-gradient(130% 75% at 50% 0%, #cfeedb 0%, var(--bg) 62%) var(--bg); }
-body[data-mood="bad"] { background: radial-gradient(130% 75% at 50% 0%, #f8d7d3 0%, var(--bg) 62%) var(--bg); }
+body[data-mood="calm"] { background: radial-gradient(130% 75% at 50% 0%, #e7e2f7 0%, var(--bg) 62%) var(--bg); }
 .verdict { border-radius: var(--radius); padding: 18px 20px; margin-top: 20px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); text-align: center; animation: pop .45s cubic-bezier(.2, 1.4, .4, 1) both; }
 .verdict.good { border-color: var(--good); background: var(--good-bg); }
-.verdict.bad { border-color: var(--bad); background: var(--bad-bg); }
+.verdict.calm { border-color: #d9d1f2; background: #f5f3fc; }
 .verdict h3 { font-size: 24px; margin-bottom: 4px; }
 .burst { font-family: "Space Grotesk", Inter, sans-serif; font-size: clamp(56px, 18vw, 88px); line-height: 1; color: var(--accent-text); animation: burst .8s cubic-bezier(.2, 1.6, .4, 1) .1s both; }
 .streak-msg { display: inline-block; margin: 8px 4px 0; font-weight: 700; color: var(--fire); animation: wiggle .9s ease-in-out .5s both; }
@@ -286,7 +285,8 @@ body[data-mood="bad"] { background: radial-gradient(130% 75% at 50% 0%, #f8d7d3 
 .breakdown { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; }
 .breakdown:empty { display: none; }
 .breakdown span { padding: 4px 10px; border-radius: 999px; background: #ffffffc0; border: 1px solid #bfdcc8; color: var(--good); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.streak-lost { margin: 10px 0 0; color: var(--bad); font-size: 14px; font-weight: 700; }
+/* how the room did: a miss is normal, a hit is shared */
+.room { margin: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--text); }
 .status { min-height: 1.5em; margin-top: 16px; color: var(--muted); text-align: center; }
 
 .move { font-weight: 700; font-size: 14px; }
@@ -611,6 +611,7 @@ button.av.on { background: #e8f2d2; border-color: var(--forest); box-shadow: 0 0
 .hero h1 { font-size: 34px; margin: 20px 0 12px; }
 .hero .face { width: 105px; height: 105px; border: 1px solid #d1dfbc; border-radius: 30px; display: grid; place-items: center; background: #edf5dc; margin: 15px auto 25px; font-size: 64px; transform: rotate(-5deg); }
 .hero .rank { font-weight: 700; font-size: 100px; letter-spacing: -.07em; }
+.hero .rank.tier { font-size: clamp(40px, 12vw, 60px); letter-spacing: -.04em; margin: 12px 0 8px; }   /* "Top half", "Keep going!" */
 .waiting-room { background: white; border: 1px solid var(--line); border-radius: 20px; padding: 20px; margin: 25px 0; }
 .waiting-room .live-label { margin-bottom: 12px; }
 .waiting-room p { margin-bottom: 5px; font-size: 13px; }
@@ -623,10 +624,8 @@ button.av.on { background: #e8f2d2; border-color: var(--forest); box-shadow: 0 0
 .mission-dots .done { background: var(--forest); }
 .timer { height: 8px; }
 .timer > span { background: var(--forest); }
-.timer.low > span { background: var(--bad); }
 .timer-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .timer-meta #left { font-weight: 700; color: var(--forest); font-variant-numeric: tabular-nums; }
-.timer-meta #left.urgent { color: var(--bad); display: inline-block; animation: pulse 1s ease-in-out infinite; }
 .timer-meta #hint.locked { color: var(--forest); font-weight: 700; }
 button.opt { border-radius: 13px; min-height: 68px; font-weight: 500; font-size: 15px; align-items: center; justify-content: flex-start; border-left-width: 4px; }
 button.opt.c0 { border-left-color: var(--c0); } button.opt.c1 { border-left-color: var(--c1); } button.opt.c2 { border-left-color: var(--c2); } button.opt.c3 { border-left-color: var(--c3); } button.opt.c4 { border-left-color: var(--c4); } button.opt.c5 { border-left-color: var(--c5); }
@@ -643,7 +642,7 @@ button.opt.picked .k { box-shadow: 0 0 0 2px #fff; }
 button.opt.picked::after { content: "✓ Locked in"; flex: 0 0 auto; margin-left: auto; padding: 5px 10px; border-radius: 999px; background: var(--lime); color: var(--forest-dark); font-size: 12px; font-weight: 800; white-space: nowrap; }
 button.opt.picked.sending::after { content: "Sending…"; background: #ffffff2e; color: #fff; }
 button.opt.right::after { content: '✓'; font-weight: 800; margin-left: auto; color: var(--good); }
-button.opt.wrong::after { content: '×'; font-weight: 800; margin-left: auto; color: var(--bad); }
+button.opt.wrong::after { content: '×'; font-weight: 800; margin-left: auto; color: var(--purple); }
 button.opt:disabled:not(.picked):not(.right):not(.wrong) { opacity: .6; }
 .opts.locked button.opt:disabled:not(.picked) { opacity: .35; filter: grayscale(.7); box-shadow: none; }
 .status { font-size: 12px; }

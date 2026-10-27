@@ -53,7 +53,7 @@ test("quizzes are imported, edited and validated", async () => {
   const created = await admin("POST", "/api/admin/quizzes", { data: sample });
   assert.equal(created.status, 201);
   assert.equal(created.data.title, "AI Quiz");
-  assert.equal(created.data.questions.length, 18);
+  assert.equal(created.data.questions.length, sample.questions.length);
   quizId = created.data.id;
 
   const bad = await admin("PUT", `/api/admin/quizzes/${quizId}/questions/q99`,
@@ -64,7 +64,7 @@ test("quizzes are imported, edited and validated", async () => {
   const good = await admin("PUT", `/api/admin/quizzes/${quizId}/questions/q99`,
     { id: "q99", category: "Extra", prompt: "Is this saved?", options: ["Yes", "No"], answer: 0, explanation: "It is." });
   assert.equal(good.status, 200);
-  assert.equal((await admin("GET", `/api/admin/quizzes/${quizId}`)).data.questions.length, 19);
+  assert.equal((await admin("GET", `/api/admin/quizzes/${quizId}`)).data.questions.length, sample.questions.length + 1);
   assert.equal((await admin("DELETE", `/api/admin/quizzes/${quizId}/questions/q99`)).status, 200);
   assert.equal((await admin("DELETE", `/api/admin/quizzes/${quizId}/questions/q99`)).status, 404);
 
@@ -79,7 +79,7 @@ test("quizzes are imported, edited and validated", async () => {
 
   const badImport = await admin("PUT", `/api/admin/quizzes/${quizId}/import`, { questions: [{ prompt: "x", options: ["a", "b"], answer: 5 }] });
   assert.equal(badImport.status, 400);
-  assert.equal((await admin("GET", `/api/admin/quizzes/${quizId}`)).data.questions.length, 18, "a failed import changes nothing");
+  assert.equal((await admin("GET", `/api/admin/quizzes/${quizId}`)).data.questions.length, sample.questions.length, "a failed import changes nothing");
 });
 
 test("a whole game: join, answer, reveal, streaks, the clock, the podium and the results", async () => {

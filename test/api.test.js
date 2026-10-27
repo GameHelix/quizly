@@ -23,6 +23,35 @@ after(() => app?.close());
 const bearer = token => ({ authorization: `Bearer ${token}` });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+/* The states a live stream sends, one at a time; pings are skipped. */
+function states(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  return {
+    async next(timeoutMs = 3000) {
+      const giveUp = Date.now() + timeoutMs;
+      for (;;) {
+        const end = buffer.indexOf("\n\n");
+        if (end >= 0) {
+          const message = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (message.startsWith("data: ")) return JSON.parse(message.slice(6));
+          continue;
+        }
+        let timer;
+        const late = new Promise(resolve => { timer = setTimeout(resolve, Math.max(0, giveUp - Date.now()), { late: true }); });
+        const chunk = await Promise.race([reader.read(), late]);
+        clearTimeout(timer);
+        if (chunk.late) throw new Error(`no state within ${timeoutMs} ms`);
+        if (chunk.done) throw new Error("the stream ended");
+        buffer += decoder.decode(chunk.value, { stream: true });
+      }
+    },
+    close: () => reader.cancel()
+  };
+}
+
 async function correctAnswer(pin, index) {
   const { rows: [g] } = await app.context.pool.query(
     "select round from games where pin = $1 order by created_at desc limit 1", [pin]);
@@ -141,15 +170,23 @@ test("a whole game: join, answer, reveal, streaks, the clock, the podium and the
   assert.equal(s.reveal.correct, 2);
   assert.equal(s.reveal.counts.reduce((a, b) => a + b), 3);
 
+  assert.ok(["Aysel", "=cmd|' /C calc'!A0"].includes(s.reveal.fastest.nickname), "the fastest right answer is named");
+  assert.ok(s.reveal.fastest.ms >= 0);
+
   let a = (await me(aysel)).data;
   assert.equal(a.result.correct, true);
   assert.ok(a.result.points >= 500 && a.result.points <= 1000, `points ${a.result.points}`);
   assert.equal(a.result.bonus, 0);
+  assert.equal(a.result.base, 500, "the points say where they came from");
+  assert.ok(a.result.ms >= 0 && a.result.ms <= 1000);
   assert.equal(a.standing.of, 3);
   const k = (await me(kamran)).data;
   assert.equal(k.result.correct, false);
   assert.equal(k.result.points, 0);
+  assert.equal(k.result.base, 0);
   assert.equal(k.standing.rank, 3);
+  assert.equal(k.standing.behind, null, "last place has nobody behind");
+  assert.ok(k.standing.ahead.gap > 0);
 
   // A second click on the same screen does nothing.
   s = (await admin("POST", `/api/host/games/${pin}/next`, { from: { phase: "reveal", index: 0 } })).data;
@@ -168,8 +205,11 @@ test("a whole game: join, answer, reveal, streaks, the clock, the podium and the
   a = (await me(aysel)).data;
   assert.equal(a.phase, "reveal");
   assert.equal(a.result.bonus, 100);
+  assert.ok(a.result.points - a.result.base - a.result.bonus > 0, "a quick answer earns a speed share");
   assert.equal(a.me.streak, 2);
   assert.equal(a.standing.rank, 1);
+  assert.equal(a.standing.ahead, null);
+  assert.ok(a.standing.behind.gap > 0, "the leader is told who is chasing");
 
   // Question 3: only Aysel answers, so the clock has to run out (5 s + grace).
   await admin("POST", `/api/host/games/${pin}/next`, { from: { phase: "reveal", index: 1 } });
@@ -236,6 +276,39 @@ test("when the last answers arrive together, the question still closes at once",
     { playerId: p.playerId, index: 0, choice: 0, elapsedMs: 900 }, bearer(p.token))));
   assert.ok(all.every(r => r.status === 200));
   assert.equal((await admin("GET", `/api/host/games/${pin}`)).data.phase, "reveal", "nobody waits for the clock");
+  await admin("POST", `/api/host/games/${pin}/end`);
+});
+
+test("a live stream sends every change of the game as it happens", async () => {
+  const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
+  assert.equal((await fetch(`${app.base}/api/games/000000/live`)).status, 404);
+  const res = await fetch(`${app.base}/api/games/${pin}/live`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /text\/event-stream/);
+  assert.match(res.headers.get("cache-control"), /no-store/);
+  const stream = states(res);
+
+  let s = await stream.next();
+  assert.equal(s.phase, "lobby");
+  assert.equal(s.players, 0);
+  assert.ok(Math.abs(s.now - Date.now()) < 1000, "stamped with the server's time as it is sent");
+
+  let asked = Date.now();
+  await anon("POST", `/api/games/${pin}/players`, { nickname: "Streamer" });
+  s = await stream.next();
+  assert.equal(s.players, 1);
+  assert.ok(Date.now() - asked < 1000, `a join arrives at once (${Date.now() - asked} ms)`);
+
+  asked = Date.now();
+  await admin("POST", `/api/host/games/${pin}/next`, { from: { phase: "lobby", index: -1 } });
+  s = await stream.next();
+  assert.equal(s.phase, "question");
+  assert.ok(Date.now() - asked < 1000, `the next question arrives at once (${Date.now() - asked} ms)`);
+
+  // Nobody answers and nothing polls: the feed itself closes the question when time is up.
+  s = await stream.next(s.question.deadline - Date.now() + 3000);
+  assert.equal(s.phase, "reveal");
+  stream.close();
   await admin("POST", `/api/host/games/${pin}/end`);
 });
 

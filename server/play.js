@@ -17,7 +17,7 @@
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { AVATARS, cleanNickname, scoreFor, shuffle, streakBonusFor } from "../shared/quiz.js";
 import { tx } from "./db.js";
-import { GameError } from "./errors.js";
+import { GameError, log } from "./errors.js";
 
 const LEAD_IN_MS = 3000;            // "get ready": every phone has the question before its options open
 const GRACE_MS = 1500;              // answers sent before zero but still in flight are accepted this long after
@@ -25,9 +25,13 @@ export const LATENCY_MS = 600;      // how much of the network delay a phone may
 const BOARD_SIZE = 20;              // rows in the public state, for the leaderboard screen
 const CLOCK_SKEW_MS = 300;          // a phone's clock estimate may run this far ahead of ours
 const VIEW_CACHE_MS = 500;          // how long one process reuses a public view
+const LIVE_TICK_MS = 250;           // how often a live feed looks for a change
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// The games a PIN can name: live ones, and finished ones for two hours so
+// phones can still show the final screen.
+const FINDABLE = "g.pin = $1 and (g.status in ('lobby', 'running') or g.finished_at > now() - interval '2 hours')";
 
-export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN_MS }) {
+export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN_MS, liveTickMs = LIVE_TICK_MS }) {
   const viewCache = new Map();   // pin → { at, view }
   // A phone asking for its own view more than twice a second gets the same
   // answer: a token is no licence to make the database work flat out.
@@ -35,14 +39,11 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
 
   /* ---------- finding games ---------- */
 
-  /* The game a PIN belongs to. Finished games keep answering for two hours
-   * so phones can still show the final screen. */
+  /* The game a PIN belongs to. */
   async function find(pin) {
     if (typeof pin !== "string" || !/^\d{6}$/.test(pin)) return null;
     const { rows: [row] } = await pool.query(`
-      select * from games
-      where pin = $1 and (status in ('lobby', 'running') or finished_at > now() - interval '2 hours')
-      order by created_at desc limit 1`, [pin]);
+      select * from games g where ${FINDABLE} order by g.created_at desc limit 1`, [pin]);
     return row ? hydrate(row) : null;
   }
 
@@ -323,9 +324,10 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
       now: Date.now()
     };
     if (game.status === "abandoned") return v;
-    const [players, counts] = await Promise.all([
+    const [players, counts, fastest] = await Promise.all([
       activePlayers(game.id),
-      game.phase === "question" || game.phase === "reveal" ? choiceCounts(game) : null
+      game.phase === "question" || game.phase === "reveal" ? choiceCounts(game) : null,
+      game.phase === "reveal" ? fastestRight(game) : null
     ]);
     const q = game.round[game.index];
     v.players = players.length;
@@ -344,7 +346,8 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
         explanation: q.explanation,
         counts,
         answered: counts.reduce((a, b) => a + b, 0),
-        correct: counts[q.answer]
+        correct: counts[q.answer],
+        fastest
       };
     }
     if (game.closedCount > 0) v.leaderboard = board(players, BOARD_SIZE);
@@ -364,6 +367,67 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
     if (viewCache.size > 1000) viewCache.clear();
     viewCache.set(pin, { at: Date.now(), view });
     return view;
+  }
+
+  /* ---------- live feeds ---------- */
+
+  /* A screen holding a stream open (GET /api/games/:pin/live) is sent the
+   * public view the moment it changes. Each game has one feed per process: a
+   * few times a second it reads one short row that changes whenever the view
+   * would, and builds the view again only when it has. */
+  const feeds = new Map();   // pin → { listeners, key, view, failing }
+
+  /* Calls send(view) with the game's public view at once and after every
+   * change, and send(null) when the game is gone. Returns the way to stop. */
+  function watch(pin, send) {
+    let feed = feeds.get(pin);
+    if (!feed) {
+      feed = { listeners: new Set([send]), key: "", view: null, failing: false };
+      feeds.set(pin, feed);
+      runFeed(pin, feed);
+    } else {
+      feed.listeners.add(send);
+      if (feed.view) send(feed.view);
+    }
+    return () => feed.listeners.delete(send);
+  }
+
+  async function runFeed(pin, feed) {
+    while (feed.listeners.size) {
+      try {
+        const key = await changeKey(pin);
+        if (key !== feed.key) {
+          feed.key = key;
+          forget(pin);
+          feed.view = await publicState(pin);
+          for (const send of feed.listeners) send(feed.view);
+        }
+        feed.failing = false;
+      } catch (err) {
+        if (!feed.failing) log.error("live feed failed", { pin, err });
+        feed.failing = true;
+      }
+      await new Promise(resolve => setTimeout(resolve, liveTickMs));
+    }
+    feeds.delete(pin);
+  }
+
+  /* A short string that changes whenever the public view would: the screen,
+   * the lock, who is in and how many answers have come. Like every read of a
+   * game, it closes a question whose clock has run out. */
+  async function changeKey(pin, closed = false) {
+    const { rows: [g] } = await pool.query(`
+      select g.id, g.status, g.phase, g.current_index, g.locked, g.deadline,
+             (select count(*) from players p where p.game_id = g.id) as joined,
+             (select count(*) from players p where p.game_id = g.id and p.kicked) as kicked,
+             (select count(*) from answers a where a.game_id = g.id) as answers
+      from games g where ${FINDABLE} order by g.created_at desc limit 1`, [pin]);
+    if (!g) return "gone";
+    if (!closed && g.phase === "question" && Date.now() > g.deadline + GRACE_MS) {
+      await current(pin);
+      return changeKey(pin, true);
+    }
+    return [g.id, g.status, g.phase, g.current_index, g.locked, g.joined, g.kicked, g.answers].join(":");
   }
 
   /* The private half of one phone: its own answer, its result once the
@@ -399,14 +463,17 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
     }
     if (game.phase === "question" || game.phase === "reveal") {
       const { rows: [a] } = await pool.query(
-        "select choice, correct, bonus from answers where player_id = $1 and question_index = $2", [p.id, game.index]);
+        "select choice, correct, bonus, elapsed_ms from answers where player_id = $1 and question_index = $2", [p.id, game.index]);
       if (game.phase === "question") v.choice = a ? a.choice : null;
       else {
+        // points = base + the speed share + bonus (the streak part), so a phone can show where they came from
         v.result = {
           choice: a ? a.choice : null,
           correct: !!a?.correct,
           points: p.last_points,
-          bonus: a?.correct ? a.bonus : 0
+          base: a?.correct ? game.settings.basePoints : 0,
+          bonus: a?.correct ? a.bonus : 0,
+          ms: a ? a.elapsed_ms : null
         };
       }
     }
@@ -415,11 +482,13 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
       const list = ranked(players);
       const at = list.findIndex(x => x.id === p.id);
       const ahead = at > 0 ? list[at - 1] : null;
+      const behind = at >= 0 ? list[at + 1] ?? null : null;
       v.standing = {
         rank: at + 1,
         of: list.length,
         move: p.prev_rank && p.rank ? p.prev_rank - p.rank : 0,
-        ahead: ahead ? { nickname: ahead.nickname, avatar: ahead.avatar, gap: ahead.score - p.score } : null
+        ahead: ahead ? { nickname: ahead.nickname, avatar: ahead.avatar, gap: ahead.score - p.score } : null,
+        behind: behind ? { nickname: behind.nickname, avatar: behind.avatar, gap: p.score - behind.score } : null
       };
       if (game.phase === "final") {
         v.final = {
@@ -442,6 +511,16 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
       select id, nickname, avatar, score, last_points, streak, rank, prev_rank, correct_ms, joined_at
       from players where game_id = $1 and not kicked order by joined_at, id`, [gameId]);
     return rows;
+  }
+
+  /* Whoever got the current question right first, for the room to cheer. */
+  async function fastestRight(game) {
+    const { rows: [f] } = await pool.query(`
+      select p.id, p.nickname, p.avatar, a.elapsed_ms
+      from answers a join players p on p.id = a.player_id and not p.kicked
+      where a.game_id = $1 and a.question_index = $2 and a.correct
+      order by a.elapsed_ms, a.answered_at limit 1`, [game.id, game.index]);
+    return f ? { playerId: f.id, nickname: f.nickname, avatar: f.avatar, ms: f.elapsed_ms } : null;
   }
 
   async function choiceCounts(game) {
@@ -485,7 +564,7 @@ export function createPlay({ pool, quizzes, maxPlayers = 300, leadInMs = LEAD_IN
 
   return {
     find, current, create, join, player, next, end, kick, lock, answer,
-    publicView, publicState, playerView, hit, used, forgive
+    publicView, publicState, watch, playerView, hit, used, forgive
   };
 }
 

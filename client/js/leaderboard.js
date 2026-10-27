@@ -48,6 +48,13 @@ export function renderBoard(list, rows, { gains = true } = {}) {
   });
 }
 
+/* A line for the player who climbed furthest in the last reveal, when
+ * anyone climbed two places or more; "" otherwise. */
+export function climberHtml(rows) {
+  const best = (rows || []).reduce((top, r) => (r.move >= 2 && r.move > (top?.move ?? 0) ? r : top), null);
+  return best ? `🚀 <b>${escapeHtml(best.avatar)} ${escapeHtml(best.nickname)}</b> climbed ${best.move} places` : "";
+}
+
 export function moveHtml(move) {
   if (move > 0) return `<span class="move up">▲${move}</span>`;
   if (move < 0) return `<span class="move down">▼${-move}</span>`;

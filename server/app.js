@@ -20,6 +20,9 @@ import { createPlay } from "./play.js";
 import { createQuizzes } from "./quizzes.js";
 import { createResults } from "./results.js";
 
+const STREAM_MS = 25_000;   // a live stream's length: inside the function's 30 s limit on Vercel (vercel.json)
+const PING_MS = 10_000;     // a comment this often, so a screen can tell a quiet game from a dead line
+
 /* Everything a request needs, built once per process (per warm instance on Vercel). */
 export function createContext(config) {
   const pool = createPool(config.databaseUrl);
@@ -94,6 +97,37 @@ export function createApp({ config, pool, quizzes, play, results, auth }) {
       throw new GameError("no_game");
     }
     res.set("Cache-Control", "public, max-age=0, s-maxage=1").json(view);
+  });
+
+  // The same state pushed down one long response the moment it changes, so
+  // every screen moves with the game instead of a poll and a cache behind it.
+  // A stream ends after STREAM_MS and the screen opens the next one at once.
+  api.get("/games/:pin/live", async (req, res) => {
+    if (!(await play.find(req.params.pin))) {
+      await limited(`pinget:${req.ip}`, 300, 10 * 60_000);
+      throw new GameError("no_game");
+    }
+    res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" });
+    res.flushHeaders();
+    const write = text => {
+      if (!res.writableEnded && !res.destroyed) res.write(text);
+    };
+    const close = () => {
+      if (!res.writableEnded) res.end();
+    };
+    // Escaped like every JSON response here (app.set("json escape")).
+    const stop = play.watch(req.params.pin, view => (view
+      ? write(`data: ${JSON.stringify({ ...view, now: Date.now() }).replace(/[<>&]/g, c => `\\u00${c.charCodeAt(0).toString(16)}`)}\n\n`)
+      : close()));
+    const ping = setInterval(() => write(": ping\n\n"), PING_MS);
+    const done = setTimeout(close, STREAM_MS);
+    const finish = () => {
+      stop();
+      clearInterval(ping);
+      clearTimeout(done);
+    };
+    res.on("close", finish);
+    if (res.destroyed || req.socket?.destroyed) finish();   // the screen left while the game was looked up
   });
 
   api.get("/games/:pin/qr.svg", async (req, res) => {

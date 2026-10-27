@@ -28,7 +28,10 @@ panel at `/admin`. Vercel project `quizly` in the PRE team; database on Neon.
 - **Gamification** — a speed bonus, answer streaks with a growing bonus (🔥), rank
   movement (▲▼), a 3-2-1 lead-in, sound cues, haptics on Android, confetti, a podium
   that rises third–second–first, end-of-game awards (⚡ fastest finger, 🔥 longest
-  streak, 📈 comeback since half-time) and badges on each phone (🏆 💯 …).
+  streak, 📈 comeback since half-time) and badges on each phone (🏆 💯 …). After each
+  question the projector names the fastest right answer and the leaderboard the biggest
+  climber; each phone shows where its points came from (correct, speed, streak, time),
+  a streak that ended, and who it is chasing and who is chasing it.
 
 ## Interface and game experience
 
@@ -77,17 +80,24 @@ Every quiz, game, player and answer lives in Postgres. Nothing is kept in a serv
 memory between requests, which is what lets it run as a Vercel Function: any instance
 can answer any request.
 
-Vercel cannot hold a WebSocket open, so screens **poll**: each asks for the game's
-shared state about once a second. That state is the same for everyone, so Vercel's CDN
-answers most of those requests from cache (`s-maxage=1`) and each function instance
-also reuses it for half a second — sixty phones cost the database a couple of queries a
-second. A phone fetches its own private view (its answer, its result, its rank) only
-when the game moves to a new screen.
+Every screen holds one long request open, `/api/games/:pin/live`, and the server sends the
+game's shared state down it the moment anything changes: a join, an answer, the host's
+Next, a clock running out. Each function instance keeps one small feed per game that
+reads a single short row four times a second and builds the state again only when it
+changed, so sixty phones cost the database a few tiny queries a second. A stream ends
+after 25 seconds, inside the function's 30-second limit, and the screen opens the next at
+once. A phone fetches its own private view (its answer, its result, its rank) only when
+the game moves to a new screen.
 
-**Timing is fair even though polling is not instant.** A question opens with a
+Where a network holds such a response back, the screen **polls** the same state
+(`/api/games/:pin`) about once a second instead. That state is the same for everyone,
+so Vercel's CDN answers most polls from cache (`s-maxage=1`), and each function instance
+also reuses it for half a second.
+
+**Timing is fair even though no network is instant.** A question opens with a
 three-second lead-in, and its clock is two absolute timestamps. Every screen corrects for
 its own clock's error against the server's and counts down to the same instant, so the
-options open on every phone at once whether that phone polled a moment ago or not.
+options open on every phone at once whenever that phone heard of the question.
 Points are worked out on the server from the server's clock; a phone may claim back up to
 0.6 s of network delay, never more.
 
@@ -201,6 +211,12 @@ once a second, answer at human speed, and in part drop out or reload mid-game:
 
 In every run each phone's final score matched the points its reveals reported, and ranks
 ran 1…N with no gaps.
+
+Those runs polled. With live streams (the default; `--poll` still tests the polling path),
+60 phones played a 3-question game locally with 992 requests in 46 s (22/s), 4,492 states
+pushed, no failures and 60/60 answers on every question; in real browsers a phone showed
+the host's next screen 80–290 ms after the key press, and the reveal 180 ms after the last
+answer.
 
 The same 60-phone game against the live deployment, run from Baku (the function and the
 database sit in Ohio, the CDN edge in Stockholm): 12,216 requests, no failures, 60/60

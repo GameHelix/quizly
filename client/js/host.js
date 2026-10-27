@@ -9,8 +9,8 @@
 import { LETTERS } from "/shared/quiz.js";
 import { brand, footer, icon, progressRail, siteHeader, trophyArt } from "./design.js";
 import { bump, confetti, sound } from "./fx.js";
-import { renderBoard } from "./leaderboard.js";
-import { clock, getState, poll } from "./live.js";
+import { climberHtml, renderBoard } from "./leaderboard.js";
+import { clock, live } from "./live.js";
 import { $, adminGate, api, askDialog, copyText, escapeHtml, fitToScreen, fmt, keepAwake, keepFitting, plural, toast } from "./ui.js";
 
 const app = $("app");
@@ -123,10 +123,10 @@ function watch(pin, initial) {
   keepAwake();
   seenPlayers = 0;
   if (initial) show(initial);
-  poller = poll(async () => show(await getState(`/api/host/games/${pin}`)), 1000, {
+  // The host follows the same public state as every screen in the room.
+  poller = live(`/api/games/${pin}`, show, {
     onError: err => {
-      if (err.status === 401) location.reload();
-      else if (err.status === 404) {
+      if (err.status === 404) {
         toast("That game is no longer running.");
         history.replaceState(null, "", location.pathname);
         renderCreate();
@@ -323,7 +323,10 @@ function reveal(key) {
           </div>`).join("")}
       </div>
       <div class="card explain">
-        <h3>${fmt(r.correct)} of ${plural(r.answered, "answer")} right${r.answered ? ` · ${Math.round((r.correct / total) * 100)}%` : ""}</h3>
+        <div class="explain-head">
+          <h3>${fmt(r.correct)} of ${plural(r.answered, "answer")} right${r.answered ? ` · ${Math.round((r.correct / total) * 100)}%` : ""}</h3>
+          ${r.fastest ? `<p class="spotlight">⚡ Fastest: <b>${escapeHtml(r.fastest.avatar)} ${escapeHtml(r.fastest.nickname)}</b> ${(r.fastest.ms / 1000).toFixed(1)} s</p>` : ""}
+        </div>
         ${r.explanation ? `<p>${escapeHtml(r.explanation)}</p>` : ""}
       </div>
       <div class="hfoot">
@@ -339,6 +342,7 @@ function reveal(key) {
 }
 
 function scoreboard(key) {
+  const climber = climberHtml(game.leaderboard);
   draw(key, () => `
     <div class="stage">
       <div class="hbar">
@@ -346,7 +350,9 @@ function scoreboard(key) {
         <span class="pill">After question ${game.index + 1} of ${game.total}</span>
         <span class="grow"></span>${toolbar()}
       </div>
-      <h1 class="hq">A little friendly rivalry.</h1><div class="board-column-head"><span>The leaderboard</span><span>Points</span></div>
+      <h1 class="hq">A little friendly rivalry.</h1>
+      ${climber ? `<p class="spotlight">${climber}</p>` : ""}
+      <div class="board-column-head"><span>The leaderboard</span><span>Points</span></div>
       <ol class="board" id="board"></ol>
       <div class="hfoot">
         <button class="quiet" id="end">End game</button><span class="grow"></span>
@@ -442,7 +448,8 @@ async function act(action, body = {}) {
     }));
     return true;
   } catch (err) {
-    toast(err.message);
+    if (err.status === 401) location.reload();   // the sign-in has run out: the page asks for it again
+    else toast(err.message);
     return false;
   } finally {
     busy = false;

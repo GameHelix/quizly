@@ -15,7 +15,8 @@
     "db:seed": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed.js",
     "test": "node --test \"test/**/*.test.js\"",
     "load-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/load-test.js",
-    "abuse-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/abuse-test.js"
+    "abuse-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/abuse-test.js",
+    "stress-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/stress-test.js"
   },
   "dependencies": {
     "@vercel/functions": "3.10.3",

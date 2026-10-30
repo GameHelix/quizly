@@ -249,8 +249,9 @@ and 2,000 polls at 13,000+ a second with the health check staying under 35 ms.
   Everything shown is escaped; nicknames are cleaned of control and direction characters.
 - Rate limits, shared by every instance, written for a room where everyone shares one
   address: 20 wrong passwords per 15 minutes, 30 wrong PINs and 300 probes of missing games
-  per 10 minutes, and 300 successful joins per 10 minutes. Only failures and successes count,
-  so nobody can use up the room's allowance with requests that fail on purpose.
+  per 10 minutes, and 3,000 successful joins per 10 minutes — thirty full rooms, since an
+  office, a school or a mobile network shows one address for everyone. Only failures and
+  successes count, so nobody can use up the room's allowance with requests that fail on purpose.
 - At most `MAX_PLAYERS` (100) per game, and the host can lock a game and remove anyone.
 - CSV exports cannot run as spreadsheet formulas.
 - `.env` and secrets are ignored by git and by Vercel uploads.

@@ -19,6 +19,7 @@ import { $, announce, api, askDialog, escapeHtml, fmt, keepAwake, ordinal, plura
 const app = $("app");
 const SESSION_KEY = "quizly:player";
 const LAST_KEY = "quizly:last";
+const ANSWER_GRACE_MS = 1500;           // server/play.js still takes an answer this long after the clock runs out
 
 let session = readStore(SESSION_KEY);   // { pin, playerId, token, nickname, avatar }
 let game = null;                        // the shared state
@@ -338,11 +339,7 @@ async function choose(i) {
   buzz(20);
   render();
   try {
-    await api(`/api/games/${session.pin}/answers`, {
-      method: "POST",
-      token: session.token,
-      body: { playerId: session.playerId, index, choice: i, elapsedMs: Math.round(now - q.opensAt) }
-    });
+    await sendAnswer({ playerId: session.playerId, index, choice: i, elapsedMs: Math.round(now - q.opensAt) }, q.deadline);
     if (picked?.index === index) picked.sure = true;
   } catch (err) {
     if (picked?.index === index) picked = null;   // unknown until the reveal says
@@ -355,6 +352,23 @@ async function choose(i) {
   }
   if (game?.index === index) sending = false;
   render();
+}
+
+/* A tap lost on the way — the server restarting, the venue's Wi-Fi blinking —
+ * is sent again until it gets through or the question has closed. The server
+ * takes one answer per question and refuses a second copy as already
+ * answered, so trying again can never count a tap twice. */
+async function sendAnswer(body, deadline) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await api(`/api/games/${session.pin}/answers`, { method: "POST", token: session.token, body });
+    } catch (err) {
+      if (attempt > 0 && err.code === "already_answered") return;   // an earlier copy got through
+      const lost = err.status === 0 || err.status >= 500;
+      if (!lost || clock.now() > deadline + ANSWER_GRACE_MS) throw err;
+      await new Promise(resolve => setTimeout(resolve, Math.min(2000, 300 * 2 ** attempt)));
+    }
+  }
 }
 
 /* The verdict needs only this phone's own answer and the right one, so it

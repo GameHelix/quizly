@@ -335,7 +335,7 @@ function think(limitMs) {
   return spread();
 }
 
-async function answer(p, index, q, retry = 0) {
+async function answer(p, index, q) {
   if (p.done || p.key !== `running:question:${index}`) return;   // the screen moved on first
   if (p.awayUntil) {
     p.answering.delete(index);   // the screen is locked: no tap, maybe later
@@ -346,19 +346,19 @@ async function answer(p, index, q, retry = 0) {
     count("answers not sent: the phone's clock had run out");
     return;
   }
-  if (!retry) count("answers sent");
+  count("answers sent");
   p.sent.set(index, elapsedMs);
-  const r = await call("answer", "POST", `${base(p)}/api/games/${p.game.pin}/answers`, {
-    token: p.token,
-    ip: p.ip,
-    body: { playerId: p.playerId, index, choice: Math.floor(Math.random() * q.options.length), elapsedMs }
-  });
-  if (r.status === 200 || (retry && r.data?.code === "already_answered")) {
-    count("answers accepted");
-    p.answered += 1;
-  } else if (r.status === 0 && !retry && p.key === `running:question:${index}`) {
-    await pause(500);   // no answer came back: the person taps again
-    return answer(p, index, q, 1);
+  const body = { playerId: p.playerId, index, choice: Math.floor(Math.random() * q.options.length), elapsedMs };
+  // client/js/player.js's sendAnswer(): a tap lost on the way goes again until the question closes
+  for (let attempt = 0; ; attempt++) {
+    const r = await call("answer", "POST", `${base(p)}/api/games/${p.game.pin}/answers`, { token: p.token, ip: p.ip, body });
+    if (r.status === 200 || (attempt > 0 && r.data?.code === "already_answered")) {
+      count("answers accepted");
+      p.answered += 1;
+      return;
+    }
+    if ((r.status !== 0 && r.status < 500) || p.clock.now() > q.deadline + GRACE_MS) return;
+    await pause(Math.min(2000, 300 * 2 ** attempt));
   }
 }
 

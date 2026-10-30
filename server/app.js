@@ -22,6 +22,7 @@ import { createResults } from "./results.js";
 
 const STREAM_MS = 25_000;   // a live stream's length: inside the function's 30 s limit on Vercel (vercel.json)
 const PING_MS = 10_000;     // a comment this often, so a screen can tell a quiet game from a dead line
+const JOINS_PER_ADDRESS = 3000;   // in ten minutes: thirty full rooms behind one office's address
 
 /* Everything a request needs, built once per process (per warm instance on Vercel). */
 export function createContext(config) {
@@ -148,12 +149,14 @@ export function createApp({ config, pool, quizzes, play, results, auth }) {
       await limited(`pin:${req.ip}`, 30, 10 * 60_000);   // PIN guessing
       throw new GameError("no_game");
     }
-    // A whole office shares one address, so only joins that succeed count:
-    // requests that fail on purpose cannot use up the room's allowance.
+    // A whole office, school or mobile network shares one address, so only
+    // joins that succeed count — requests that fail on purpose cannot use up
+    // the room's allowance — and the ceiling is thirty full rooms, not three.
+    // Each game has its own guards: the player cap, the lock and the kick.
     const key = `join:${req.ip}`;
-    if ((await play.used(key)) >= 300) throw new GameError("slow_down");
+    if ((await play.used(key)) >= JOINS_PER_ADDRESS) throw new GameError("slow_down");
     const joined = await play.join(game, req.body?.nickname, req.body?.avatar);
-    await play.hit(key, 300, 10 * 60_000);
+    await play.hit(key, JOINS_PER_ADDRESS, 10 * 60_000);
     res.status(201).json(joined);
   });
 

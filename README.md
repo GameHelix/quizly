@@ -240,6 +240,38 @@ nicknames, prototype pollution, path traversal, oversized and malformed bodies, 
 step; 20 simultaneous joins with one nickname → one wins), PIN and password guessing,
 and 2,000 polls at 13,000+ a second with the health check staying under 35 ms.
 
+### Many games at once
+
+`npm run stress-test` plays many games at once with phones that follow a game exactly as
+the browser does. Each run is judged by what a room would notice: the targets are at the
+top of `scripts/stress-test.js`. These runs used one laptop (Apple M5, Postgres in
+Docker) and one Quizly process, as `npm start` runs it, with 100 phones a game and
+3 questions:
+
+| phones | 99% of phones see Next's screen within | answer time charged to players | server CPU, max | verdict |
+|---|---|---|---|---|
+| 1,000 | 310 ms | 0 | 40% | pass |
+| 2,500 | 330 ms | 0 | 86% | pass |
+| 5,000 | 655 ms | 0 | 100% | over 500 ms (#5) |
+| 10,000 | 4.85 s | 1.05 s (median) | 138% | screens 3–5 s late (#5) |
+
+Even at 10,000, every join and all but one of 29,988 answers got in, and every score added
+up. At 2,500 phones these all passed:
+- an answer burst, with 70% of each room tapping within two seconds;
+- every stream cut at once, with 99% of phones back within 0.66 s;
+- half the phones on a 4G-like line, with half of each room answering in the last seconds;
+- four instances behind random routing, as on Vercel, which read the database twice as hard
+  for the same load (#6).
+
+Two runs failed, and both are now fixed:
+- four rooms behind one address, as in an office, lost 100 of 400 joins to the join limit
+  (#3);
+- a server restart mid-game lost 45 of 7,500 answers; now all 7,500 count
+  (#4).
+
+Phones still take up to 13 s to all come back after a restart (#4). Everything here shared
+one machine, so these numbers are the floor, not the ceiling.
+
 ## Security
 
 - Admin and host routes need the admin password: a signed, HttpOnly, SameSite=Lax cookie.
@@ -249,8 +281,9 @@ and 2,000 polls at 13,000+ a second with the health check staying under 35 ms.
   Everything shown is escaped; nicknames are cleaned of control and direction characters.
 - Rate limits, shared by every instance, written for a room where everyone shares one
   address: 20 wrong passwords per 15 minutes, 30 wrong PINs and 300 probes of missing games
-  per 10 minutes, and 300 successful joins per 10 minutes. Only failures and successes count,
-  so nobody can use up the room's allowance with requests that fail on purpose.
+  per 10 minutes, and 3,000 successful joins per 10 minutes — thirty full rooms, since an
+  office, a school or a mobile network shows one address for everyone. Only failures and
+  successes count, so nobody can use up the room's allowance with requests that fail on purpose.
 - At most `MAX_PLAYERS` (100) per game, and the host can lock a game and remove anyone.
 - CSV exports cannot run as spreadsheet formulas.
 - `.env` and secrets are ignored by git and by Vercel uploads.
@@ -267,3 +300,4 @@ and 2,000 polls at 13,000+ a second with the health check staying under 35 ms.
 | `npm test` | rules and API tests against `TEST_DATABASE_URL` (default: the compose Postgres) |
 | `npm run load-test -- --url … --players 60` | plays a whole game with simulated phones |
 | `npm run abuse-test -- --url …` | attacks the app and checks it holds |
+| `npm run stress-test -- --games 25` | many games at once, judged by what the room feels; `--suite all` runs the whole evaluation |

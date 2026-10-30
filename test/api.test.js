@@ -427,3 +427,19 @@ test("requests that fail on purpose cannot use up a shared address's allowance",
   await admin("POST", `/api/host/games/${pin}/end`);
   await app.context.pool.query("delete from rate_limits");
 });
+
+test("a whole office behind one address can fill several rooms", async () => {
+  // An office, a school or a mobile network shows the server one address for everyone in it.
+  const pins = [];
+  for (let g = 0; g < 2; g++) pins.push((await admin("POST", "/api/host/games", { quizId })).data.pin);
+  let joined = 0;
+  for (const pin of pins) {
+    for (let i = 0; i < 160; i += 20) {
+      const batch = await Promise.all(Array.from({ length: 20 }, (_, k) => anon("POST", `/api/games/${pin}/players`, { nickname: `Desk ${i + k}` })));
+      joined += batch.filter(r => r.status === 201).length;
+    }
+  }
+  assert.equal(joined, 320, "more than 300 people from one address all get in");
+  for (const pin of pins) await admin("POST", `/api/host/games/${pin}/end`);
+  await app.context.pool.query("delete from rate_limits");
+});

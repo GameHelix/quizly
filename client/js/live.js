@@ -143,7 +143,8 @@ export function live(path, onState, { onError, query = "" } = {}) {
         return;
       }
       // No stream: the state comes by a plain request meanwhile, then the
-      // stream is tried again.
+      // stream is tried again — after a wait that differs from phone to phone,
+      // so a room that lost its server together does not return in one rush.
       failures += 1;
       try {
         deliver(await getState(path + q));
@@ -155,7 +156,7 @@ export function live(path, onState, { onError, query = "" } = {}) {
       }
       await new Promise(resolve => {
         rest = resolve;
-        setTimeout(resolve, Math.min(2000, 500 * failures));
+        setTimeout(resolve, Math.min(2000, 500 * failures) * (0.5 + Math.random()));
       });
     }
   }

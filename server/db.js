@@ -14,17 +14,23 @@ pg.types.setTypeParser(20, Number);
 
 const MIGRATIONS_DIR = path.join(ROOT, "server", "migrations");
 
-export function createPool(connectionString) {
+export function createPool(connectionString, max = Number(process.env.PG_POOL_MAX) || 5) {
   if (!connectionString) throw new Error("DATABASE_URL is not set — see .env.example");
   const pool = new pg.Pool({
     connectionString: strictTls(connectionString),
-    max: Number(process.env.PG_POOL_MAX) || 5,
+    max,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
     statement_timeout: 10_000
   });
   pool.on("error", err => log.error("idle database connection failed", { err }));
   return pool;
+}
+
+/* One connection outside the pool, for LISTEN, which needs a session that
+ * stays put (server/changes.js). */
+export function createClient(connectionString) {
+  return new pg.Client({ connectionString: strictTls(connectionString), keepAlive: true, connectionTimeoutMillis: 10_000 });
 }
 
 /* Neon hands out URLs with sslmode=require. node-postgres reads that as

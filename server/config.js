@@ -46,6 +46,8 @@ export function loadConfig(env = process.env) {
     // Migrations need a session of their own, which Neon's pooler (PgBouncer in
     // transaction mode) does not give: they use the direct URL when there is one.
     migrationUrl: env.DATABASE_URL_UNPOOLED || env.DATABASE_URL || "",
+    // So does LISTEN, which tells every instance when a game changes (changes.js).
+    listenUrl: env.DATABASE_URL_UNPOOLED || env.DATABASE_URL || "",
     adminPassword,
     generatedPassword,
     sessionSecret,

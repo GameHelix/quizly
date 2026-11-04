@@ -16,7 +16,7 @@ import { ROOT } from "./config.js";
 import { createPool } from "./db.js";
 import { GameError, UserError, log } from "./errors.js";
 import { isSameOrigin, joinBase } from "./net.js";
-import { createPlay } from "./play.js";
+import { createPlay, shown } from "./play.js";
 import { createQuizzes } from "./quizzes.js";
 import { createResults } from "./results.js";
 
@@ -27,12 +27,15 @@ const JOINS_PER_ADDRESS = 3000;   // in ten minutes: thirty full rooms behind on
 /* Everything a request needs, built once per process (per warm instance on Vercel). */
 export function createContext(config) {
   const pool = createPool(config.databaseUrl);
+  const feedPool = createPool(config.databaseUrl, 2);   // the live feeds' own (play.js)
   const quizzes = createQuizzes(pool);
+  const play = createPlay({ pool, feedPool, quizzes, maxPlayers: config.maxPlayers, listenUrl: config.listenUrl });
   return {
     config,
     pool,
+    feedPool,
     quizzes,
-    play: createPlay({ pool, quizzes, maxPlayers: config.maxPlayers }),
+    play,
     results: createResults(pool),
     auth: createAuth({ password: config.adminPassword, secret: config.sessionSecret })
   };
@@ -91,23 +94,26 @@ export function createApp({ config, pool, quizzes, play, results, auth }) {
 
   // The shared state every screen polls. Identical for everyone, so the CDN
   // may answer for a second: sixty phones cost the server about one request a second.
+  // ?phone=1 leaves out the roster and the leaderboard, which phones do not show.
   api.get("/games/:pin", async (req, res) => {
     const view = await play.publicState(req.params.pin);
     if (!view) {
       await limited(`pinget:${req.ip}`, 300, 10 * 60_000);   // PIN probing
       throw new GameError("no_game");
     }
-    res.set("Cache-Control", "public, max-age=0, s-maxage=1").json(view);
+    res.set("Cache-Control", "public, max-age=0, s-maxage=1").json(shown(view, req.query.phone === "1"));
   });
 
   // The same state pushed down one long response the moment it changes, so
   // every screen moves with the game instead of a poll and a cache behind it.
   // A stream ends after STREAM_MS and the screen opens the next one at once.
+  // Phones ask with ?phone=1 (see play.watch).
   api.get("/games/:pin/live", async (req, res) => {
     if (!(await play.find(req.params.pin))) {
       await limited(`pinget:${req.ip}`, 300, 10 * 60_000);
       throw new GameError("no_game");
     }
+    const phone = req.query.phone === "1";
     res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" });
     res.flushHeaders();
     const write = text => {
@@ -116,10 +122,7 @@ export function createApp({ config, pool, quizzes, play, results, auth }) {
     const close = () => {
       if (!res.writableEnded) res.end();
     };
-    // Escaped like every JSON response here (app.set("json escape")).
-    const stop = play.watch(req.params.pin, view => (view
-      ? write(`data: ${JSON.stringify({ ...view, now: Date.now() }).replace(/[<>&]/g, c => `\\u00${c.charCodeAt(0).toString(16)}`)}\n\n`)
-      : close()));
+    const stop = play.watch(req.params.pin, json => (json ? write(`data: ${json}\n\n`) : close()), { phone });
     const ping = setInterval(() => write(": ping\n\n"), PING_MS);
     const done = setTimeout(close, STREAM_MS);
     const finish = () => {

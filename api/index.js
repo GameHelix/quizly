@@ -10,5 +10,6 @@ import { loadConfig } from "../server/config.js";
 
 const context = createContext(loadConfig());
 attachDatabasePool(context.pool);
+attachDatabasePool(context.feedPool);
 
 export default createApp(context);

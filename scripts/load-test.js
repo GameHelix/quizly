@@ -151,7 +151,7 @@ async function seen(p, s) {
 
 async function pollOnce(p) {
   if (dropsOut(p)) return;
-  const state = await call("state", "GET", `/api/games/${pin}`).catch(() => null);
+  const state = await call("state", "GET", `/api/games/${pin}?phone=1`).catch(() => null);
   if (state?.status === 200 && state.data) await seen(p, state.data);
   if (!p.final) await pause(jitter(1000, 0.2));
 }
@@ -163,7 +163,7 @@ async function streamOnce(p) {
   requests += 1;
   let res;
   try {
-    res = await fetch(`${BASE}/api/games/${pin}/live`);
+    res = await fetch(`${BASE}/api/games/${pin}/live?phone=1`);   // as client/js/player.js asks
   } catch {
     count("live network");
     return pause(1000);

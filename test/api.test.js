@@ -390,6 +390,28 @@ test("an instance that cannot hear announcements still follows the game", async 
   }
 });
 
+test("an instance whose LISTEN hears nothing finds out, and looks four times a second", async () => {
+  // Its LISTEN is on another database, as behind a pooler that swallows notifications:
+  // it is accepted, and hears nothing. Believing it would leave this instance a minute behind.
+  const listenElsewhere = new URL(app.url);
+  listenElsewhere.pathname = "/postgres";
+  const d = await startInstance(app.url, { listenUrl: listenElsewhere.toString(), quietLookMs: 60_000 });
+  try {
+    const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
+    const stream = states(await fetch(`${d.base}/api/games/${pin}/live`));
+    assert.equal((await stream.next()).players, 0);
+    await pause(3500);   // past the check that finds the LISTEN deaf
+    const asked = Date.now();
+    await anon("POST", `/api/games/${pin}/players`, { nickname: "Behind a pooler" });
+    assert.equal((await stream.next(2000)).players, 1);
+    assert.ok(Date.now() - asked < 1000, `seen within a second (${Date.now() - asked} ms)`);
+    stream.close();
+    await admin("POST", `/api/host/games/${pin}/end`);
+  } finally {
+    await d.close();
+  }
+});
+
 test("the host can remove a player, and an empty lobby can be closed", async () => {
   const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
   const p = (await anon("POST", `/api/games/${pin}/players`, { nickname: "Troll" })).data;

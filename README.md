@@ -100,8 +100,10 @@ feed for that game hears it (`LISTEN`), reads one short row and builds the state
 turned into JSON once for all the screens it serves. A feed also wakes when its question's
 clock runs out. So nothing reads a game that has not changed, however many instances
 Vercel runs, and every phone in a room moves within milliseconds of the others. `LISTEN`
-needs the direct database URL, `DATABASE_URL_UNPOOLED`; without it the feeds look four
-times a second instead, as they always did.
+needs the direct database URL, `DATABASE_URL_UNPOOLED`. Each instance checks that it hears
+its own `NOTIFY`, when it starts listening and every half minute after; when it does not —
+a pooler in the way, or a connection that died — it says so in the log and looks four times
+a second instead, as the feeds always did.
 
 Phones are sent the state without the roster and the leaderboard, which only the big
 screens show, and hear of new answers and joins (the count they show) at most once a
@@ -174,17 +176,20 @@ QR codes point at the project's production domain. Set `PUBLIC_URL` to use a cus
 `npm start` runs Quizly as one Node process plus Postgres: the API and the client on
 `PORT`. Put it behind a TLS proxy and set `TRUST_PROXY=1` and `PUBLIC_URL`.
 
-The app runs in a worker under a small supervisor that holds the port, so it can be updated
-without a gap. After pulling new code, send the supervisor `SIGHUP` (`kill -HUP <pid>`, or
-`ExecReload=/bin/kill -HUP $MAINPID` and `systemctl reload quizly` under systemd): it starts a
-worker on the new code, waits until it is taking requests, and only then retires the old one.
-Screens move over in about a second, no request is refused and no answer is lost. A worker
-that crashes is replaced within a second. `SIGTERM` or Ctrl-C stops it, ending every live
-stream at once, so screens go straight to the next server instead of waiting.
+The app runs in a worker under a small supervisor, so it can be updated without a gap. After
+pulling new code, send the supervisor `SIGHUP`: `kill -HUP <pid>`, with the pid the startup log
+names as `supervisor=`, or `systemctl reload quizly` under systemd, with
+`ExecStart=/usr/bin/node server/index.js` (node itself: npm does not pass `SIGHUP` on) and
+`ExecReload=/bin/kill -HUP $MAINPID`. It starts a worker on the new code and `.env`, waits until
+it is taking requests, and only then retires the old one. Screens move over in about a second,
+no request is refused and no answer is lost. A worker that crashes is replaced at once; the
+port refuses connections for the moment that takes. `SIGTERM` or Ctrl-C stops it, ending every
+live stream at once, so screens go straight to the next server instead of waiting. A worker
+that starts before its database is up waits for it, for up to two minutes.
 
-Each process keeps `PG_POOL_MAX` database connections (default 5), two for the live feeds
-and one for `LISTEN`. One process serves 5,000 phones as it is; for rooms of 10,000, set
-`PG_POOL_MAX=20` (see [Capacity](#capacity)).
+Each process holds `PG_POOL_MAX` + 3 connections to the database: `PG_POOL_MAX` (default 5)
+for requests, two for the live feeds and one for `LISTEN`. One process serves 5,000 phones as
+it is; for rooms of 10,000, set `PG_POOL_MAX=20` (see [Capacity](#capacity)).
 
 ## Running the session
 

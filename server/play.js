@@ -52,7 +52,7 @@ export function createPlay({
   // A game's questions, kept by every process: a game is read on almost every
   // request, and this way the read leaves out its biggest column.
   const rounds = new Map();   // game id → round
-  const changes = createChanges({ pool, url: listenUrl, onChange: heard });
+  const changes = createChanges({ pool: feedPool, url: listenUrl, onChange: heard });
   let closing = false;
 
   /* ---------- finding games ---------- */
@@ -65,9 +65,9 @@ export function createPlay({
     return row ? withRound(row, db) : null;
   }
 
-  async function byId(id) {
-    const { rows: [row] } = await pool.query(`select ${GAME} from games g where g.id = $1`, [id]);
-    return row ? withRound(row) : null;
+  async function byId(id, db = pool) {
+    const { rows: [row] } = await db.query(`select ${GAME} from games g where g.id = $1`, [id]);
+    return row ? withRound(row, db) : null;
   }
 
   async function withRound(row, db = pool) {
@@ -86,7 +86,7 @@ export function createPlay({
   async function current(pin, db = pool) {
     const game = await find(pin, db);
     if (game && game.phase === "question" && Date.now() > game.deadline + GRACE_MS) {
-      return (await settle(game)) ?? byId(game.id);
+      return (await settle(game, db)) ?? byId(game.id, db);
     }
     return game;
   }
@@ -289,8 +289,8 @@ export function createPlay({
    * ranks for every player, in one transaction. Returns the revealed game,
    * or null if another request closed it first. Scores move only here, so
    * nothing on any screen can give an answer away while the clock runs. */
-  async function settle(game) {
-    const revealed = await tx(pool, async c => {
+  async function settle(game, db = pool) {
+    const revealed = await tx(db, async c => {
       const { rows: [row] } = await c.query(`
         update games set phase = 'reveal'
         where id = $1 and phase = 'question' and current_index = $2 returning *`, [game.id, game.index]);
@@ -445,15 +445,16 @@ export function createPlay({
       try {
         const key = await changeKey(pin, feed);
         if (key !== feed.key) {
-          feed.key = key;
           forget(pin);
           feed.view = await publicState(pin, feedPool, feed);
+          feed.key = key;   // only once the view is built: a failed build is tried again on the next look
           broadcast(feed);
         }
         feed.failing = false;
       } catch (err) {
         if (!feed.failing && !closing) log.error("live feed failed", { pin, err });
         feed.failing = true;
+        feed.deadline = 0;   // a deadline that already passed would make the next look come at once, again and again
       }
       await nextLook(feed);
     }
@@ -508,7 +509,7 @@ export function createPlay({
       };
       const now = Date.now();
       lookAt(feed, now + (changes.listening ? quietLookMs : liveTickMs));
-      if (feed.deadline) lookAt(feed, feed.deadline + GRACE_MS + 10);
+      if (feed.deadline) lookAt(feed, Math.max(feed.deadline + GRACE_MS + 10, feed.last + LOOK_GAP_MS));
       if (feed.dirty) lookAt(feed, feed.urgent ? now : Math.max(now, feed.last + LOOK_GAP_MS));
       if (!feed.listeners.size) lookAt(feed, now);
     });
@@ -740,20 +741,25 @@ export function createPlay({
   }
 
   /* For a server that is stopping: ends every live stream now, so screens
-   * reconnect at once — to the next server, if one has taken over — and
-   * sends any announcement still gathering. */
-  async function close() {
+   * reconnect at once — to the next server, if one has taken over. Changes
+   * made while it drains are still announced, until close(). */
+  function endStreams() {
     closing = true;
     for (const feed of feeds.values()) {
       for (const { send } of feed.listeners) send(null);
       poke(feed, true);
     }
+  }
+
+  /* Ends the streams, sends any announcement still gathering, and stops listening. */
+  async function close() {
+    endStreams();
     await changes.close();
   }
 
   return {
     find, current, create, join, player, next, end, kick, lock, answer,
-    publicView, publicState, watch, playerView, hit, used, forgive, close
+    publicView, publicState, watch, playerView, hit, used, forgive, endStreams, close
   };
 }
 

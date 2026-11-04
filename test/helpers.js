@@ -41,7 +41,7 @@ export async function startTestApp({ leadInMs = 0 } = {}) {
  * one stands for another Vercel instance. listen: false is an instance that
  * cannot hear announcements (a pooled URL only); liveTickMs and quietLookMs
  * are how often its feeds look for changes without one. */
-export async function startInstance(url, { leadInMs = 0, listen = true, liveTickMs, quietLookMs } = {}) {
+export async function startInstance(url, { leadInMs = 0, listen = true, listenUrl, liveTickMs, quietLookMs } = {}) {
   const pool = createPool(url);
   const quizzes = createQuizzes(pool);
   const config = {
@@ -50,7 +50,7 @@ export async function startInstance(url, { leadInMs = 0, listen = true, liveTick
   };
   const context = {
     config, pool, quizzes,
-    play: createPlay({ pool, quizzes, maxPlayers: 300, leadInMs, listenUrl: listen ? url : "", liveTickMs, quietLookMs }),
+    play: createPlay({ pool, quizzes, maxPlayers: 300, leadInMs, listenUrl: listen ? listenUrl ?? url : "", liveTickMs, quietLookMs }),
     results: createResults(pool),
     auth: createAuth({ password: PASSWORD, secret: config.sessionSecret })
   };

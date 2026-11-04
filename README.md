@@ -69,12 +69,13 @@ api/index.js          Vercel's entry point: exports the Express app
 server/               the API
   app.js              routes, security headers, error handling
   play.js             the live game: joining, the clock, answers, scoring, the reveal, awards
+  changes.js          telling every instance at once that a game changed (Postgres LISTEN/NOTIFY)
   quizzes.js          the quiz library
   results.js          past games, standings, CSV
   auth.js             admin sign-in: a signed HttpOnly cookie
   db.js               Postgres pool and migrations
   migrations/         SQL, applied in order by `npm run build` / `npm run db:migrate`
-  config.js, net.js, errors.js, index.js (the standalone server)
+  config.js, net.js, errors.js, index.js (the standalone server and its supervisor)
 shared/quiz.js        rules both sides use: validation, scoring, streaks, nicknames
 client/               the browser: four pages, their scripts, the stylesheet, the favicon, the link preview
 data/questions.json   a ready-made AI quiz in the import format — not read at runtime
@@ -93,12 +94,23 @@ can answer any request.
 
 Every screen holds one long request open, `/api/games/:pin/live`, and the server sends the
 game's shared state down it the moment anything changes: a join, an answer, the host's
-Next, a clock running out. Each function instance keeps one small feed per game that
-reads a single short row four times a second and builds the state again only when it
-changed, so sixty phones cost the database a few tiny queries a second. A stream ends
-after 25 seconds, inside the function's 30-second limit, and the screen opens the next at
-once. A phone fetches its own private view (its answer, its result, its rank) only when
-the game moves to a new screen.
+Next, a clock running out. Each function instance keeps one small feed per game. The
+instance that changes a game announces it with a Postgres `NOTIFY`; every instance with a
+feed for that game hears it (`LISTEN`), reads one short row and builds the state again,
+turned into JSON once for all the screens it serves. A feed also wakes when its question's
+clock runs out. So nothing reads a game that has not changed, however many instances
+Vercel runs, and every phone in a room moves within milliseconds of the others. `LISTEN`
+needs the direct database URL, `DATABASE_URL_UNPOOLED`. Each instance checks that it hears
+its own `NOTIFY`, when it starts listening and every half minute after; when it does not —
+a pooler in the way, or a connection that died — it says so in the log and looks four times
+a second instead, as the feeds always did.
+
+Phones are sent the state without the roster and the leaderboard, which only the big
+screens show, and hear of new answers and joins (the count they show) at most once a
+second; a new screen reaches them at once. A stream ends after 25 seconds, inside the
+function's 30-second limit, and the screen opens the next at once. A phone fetches its own
+private view (its answer, its result, its rank) only when the game moves to a new screen,
+and the ranking behind it is worked out once per screen and shared by the whole room.
 
 Where a network holds such a response back, the screen **polls** the same state
 (`/api/games/:pin`) about once a second instead. That state is the same for everyone,
@@ -144,7 +156,8 @@ event, deploy it.
    everything else).
 2. Attach the Neon database (Storage → Neon). It sets `DATABASE_URL`, the pooled connection
    (host ending `-pooler`) that the app uses, and `DATABASE_URL_UNPOOLED`, the direct one that
-   migrations use: PgBouncer's transaction pooling cannot hold the session a migration needs.
+   migrations and the live feeds' `LISTEN` use: PgBouncer's transaction pooling cannot hold
+   the session either needs.
 3. Add `ADMIN_PASSWORD` (16+ characters: `openssl rand -base64 24`) and `SESSION_SECRET`
    (`openssl rand -hex 32`) for Production.
 4. Deploy. The build assembles the static site and applies the migrations.
@@ -157,6 +170,26 @@ request makes several database round trips, so the function belongs beside the d
 not beside the audience. If the database is moved, move `regions` in `vercel.json` with it.
 
 QR codes point at the project's production domain. Set `PUBLIC_URL` to use a custom one.
+
+## Running it on your own server
+
+`npm start` runs Quizly as one Node process plus Postgres: the API and the client on
+`PORT`. Put it behind a TLS proxy and set `TRUST_PROXY=1` and `PUBLIC_URL`.
+
+The app runs in a worker under a small supervisor, so it can be updated without a gap. After
+pulling new code, send the supervisor `SIGHUP`: `kill -HUP <pid>`, with the pid the startup log
+names as `supervisor=`, or `systemctl reload quizly` under systemd, with
+`ExecStart=/usr/bin/node server/index.js` (node itself: npm does not pass `SIGHUP` on) and
+`ExecReload=/bin/kill -HUP $MAINPID`. It starts a worker on the new code and `.env`, waits until
+it is taking requests, and only then retires the old one. Screens move over in about a second,
+no request is refused and no answer is lost. A worker that crashes is replaced at once; the
+port refuses connections for the moment that takes. `SIGTERM` or Ctrl-C stops it, ending every
+live stream at once, so screens go straight to the next server instead of waiting. A worker
+that starts before its database is up waits for it, for up to two minutes.
+
+Each process holds `PG_POOL_MAX` + 3 connections to the database: `PG_POOL_MAX` (default 5)
+for requests, two for the live feeds and one for `LISTEN`. One process serves 5,000 phones as
+it is; for rooms of 10,000, set `PG_POOL_MAX=20` (see [Capacity](#capacity)).
 
 ## Running the session
 
@@ -244,33 +277,60 @@ and 2,000 polls at 13,000+ a second with the health check staying under 35 ms.
 
 `npm run stress-test` plays many games at once with phones that follow a game exactly as
 the browser does. Each run is judged by what a room would notice: the targets are at the
-top of `scripts/stress-test.js`. These runs used one laptop (Apple M5, Postgres in
+top of `scripts/stress-test.js`. These runs used one laptop (Apple M5 Max, Postgres in
 Docker) and one Quizly process, as `npm start` runs it, with 100 phones a game and
-3 questions:
+3 questions (`npm run stress-test -- --suite all`):
 
-| phones | 99% of phones see Next's screen within | answer time charged to players | server CPU, max | verdict |
+| phones | 99% of phones see Next's screen within | server CPU, average / max | database rows read a second | verdict |
 |---|---|---|---|---|
-| 1,000 | 310 ms | 0 | 40% | pass |
-| 2,500 | 330 ms | 0 | 86% | pass |
-| 5,000 | 655 ms | 0 | 100% | over 500 ms (#5) |
-| 10,000 | 4.85 s | 1.05 s (median) | 138% | screens 3–5 s late (#5) |
+| 1,000 | 25 ms | 15% / 40% | 63,000 | pass |
+| 2,500 | 31 ms | 22% / 53% | 78,000 | pass |
+| 5,000 | 70 ms | 31% / 85% | 189,000 | pass |
+| 10,000 | 690 ms | 55% / 110% | 384,000 | over 500 ms (see below) |
 
-Even at 10,000, every join and all but one of 29,988 answers got in, and every score added
-up. At 2,500 phones these all passed:
+Against the code before #5 and
+#6 were fixed, on the same machine:
+- 2,500 phones: 99% see the next screen within 31 ms, not 275 ms; the database reads 78,000
+  rows a second, not 172,000.
+- 5,000 phones: 70 ms, not 390 ms; the server's CPU averages 31%, not 52%; the database
+  reads 189,000 rows a second, not 400,000.
+- 10,000 phones: 690 ms, not 2.45 s, and no answer time is charged to anyone (up to 260 ms
+  was, and points with it).
+- Four instances behind random routing, as on Vercel: before, at 2,500 phones, they read
+  the database 2.6 times as hard as one (451,000 rows a second against 172,000), and the
+  phones of a room reached a new screen up to 245 ms apart. Now, at 5,000 phones, four read
+  1.4 times what one does (269,000 against 189,000), and a room moves within 14 ms.
+- A server restart mid-game, 2,500 phones: the server is back after 0.4 s, not 5.1 s, and
+  every phone within 1.2 s, not 15 s.
+
+At 5,000 phones, the largest size that passed, these all pass too:
+- four rooms behind one address, as in an office (#3);
+- the same load over four instances;
 - an answer burst, with 70% of each room tapping within two seconds;
-- every stream cut at once, with 99% of phones back within 0.66 s;
+- every stream cut at once, with every phone back within 1.2 s;
+- a server restart mid-game: down for 0.7 s, every phone back within 2.6 s, every answer
+  counted (#4);
+- a reload onto new code mid-game: the new worker serving after 0.1 s, every phone back
+  within 1.8 s, every answer counted, no server error;
 - half the phones on a 4G-like line, with half of each room answering in the last seconds;
-- four instances behind random routing, as on Vercel, which read the database twice as hard
-  for the same load (#6).
+- ten minutes of games back to back at 2,000 phones: 180 games, 18,000 joins and 53,999
+  answers, every one in, with 99% of phones on the next screen within 26 ms, and the
+  server's memory level at 340 MB.
 
-Two runs failed, and both are now fixed:
-- four rooms behind one address, as in an office, lost 100 of 400 joins to the join limit
-  (#3);
-- a server restart mid-game lost 45 of 7,500 answers; now all 7,500 count
-  (#4).
+One game of 1,000 players, for a town hall (`--games 1 --players 1000`, with `MAX_PLAYERS`
+raised to match), passes every check as well: 99% of phones on the next screen within 94 ms,
+the server's CPU at most 34%.
 
-Phones still take up to 13 s to all come back after a restart (#4). Everything here shared
-one machine, so these numbers are the floor, not the ceiling.
+At 10,000 phones on one process every join and every answer still gets in and the scores
+add up, but 1% of phones see the next screen later than 500 ms: the presenter's press waits
+its turn for one of the process's five database connections, behind ten thousand phones
+asking for their own view. With `PG_POOL_MAX=20`, 99% see it within 315 ms. On this Mac the
+operating system is a limit too: macOS queues 128 new connections (`kern.ipc.somaxconn`)
+and a closed connection keeps its port for 30 s, so when thousands of simulated phones open
+connections at once, some are reset before Quizly sees them (64 of 99,000 requests for the
+phones' own view at the default pool size). A plain Node server shows the same.
+
+Everything here shared one machine, so these numbers are the floor, not the ceiling.
 
 ## Security
 
@@ -300,4 +360,4 @@ one machine, so these numbers are the floor, not the ceiling.
 | `npm test` | rules and API tests against `TEST_DATABASE_URL` (default: the compose Postgres) |
 | `npm run load-test -- --url … --players 60` | plays a whole game with simulated phones |
 | `npm run abuse-test -- --url …` | attacks the app and checks it holds |
-| `npm run stress-test -- --games 25` | many games at once, judged by what the room feels; `--suite all` runs the whole evaluation |
+| `npm run stress-test -- --games 25` | many games at once, judged by what the room feels; `--suite all` runs the whole evaluation, `--profile dir` writes the servers' CPU profiles |

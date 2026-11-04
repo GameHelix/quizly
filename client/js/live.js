@@ -73,8 +73,9 @@ async function refusal(res) {
  * next stream as soon as one ends. A dropped connection shows the
  * reconnecting strip and is retried; a refusal such as a game that no longer
  * exists goes to onError. Where a stream opens but nothing comes through, the
- * screen polls `path` instead. */
-export function live(path, onState, { onError } = {}) {
+ * screen polls `path` instead. `query` (phones: "phone=1") goes on both. */
+export function live(path, onState, { onError, query = "" } = {}) {
+  const q = query ? `?${query}` : "";
   let stopped = false;
   let stream = null;   // the open stream's AbortController
   let rest = null;     // ends a wait between attempts early
@@ -103,7 +104,7 @@ export function live(path, onState, { onError } = {}) {
       };
       expect(QUIET_MS);
       try {
-        const res = await fetch(`${path}/live`, { cache: "no-store", credentials: "same-origin", signal: ctl.signal });
+        const res = await fetch(`${path}/live${q}`, { cache: "no-store", credentials: "same-origin", signal: ctl.signal });
         if (!res.ok) throw await refusal(res);
         opened = true;
         expect(FIRST_MS);
@@ -138,14 +139,15 @@ export function live(path, onState, { onError } = {}) {
       }
       if (heard || ctl.signal.reason === "wake") continue;   // it ended, or the screen came back: open the next
       if (opened) {
-        fallback = poll(async () => deliver(await getState(path)), 1000, { onError });
+        fallback = poll(async () => deliver(await getState(path + q)), 1000, { onError });
         return;
       }
       // No stream: the state comes by a plain request meanwhile, then the
-      // stream is tried again.
+      // stream is tried again — after a wait that differs from phone to phone,
+      // so a room that lost its server together does not return in one rush.
       failures += 1;
       try {
-        deliver(await getState(path));
+        deliver(await getState(path + q));
         netStatus(true);
       } catch (err) {
         if (stopped) return;
@@ -154,7 +156,7 @@ export function live(path, onState, { onError } = {}) {
       }
       await new Promise(resolve => {
         rest = resolve;
-        setTimeout(resolve, Math.min(2000, 500 * failures));
+        setTimeout(resolve, Math.min(2000, 500 * failures) * (0.5 + Math.random()));
       });
     }
   }

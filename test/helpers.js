@@ -20,11 +20,29 @@ import { createResults } from "../server/results.js";
 export const PASSWORD = "test-password-123";
 const DEFAULT_URL = "postgres://quizly:quizly@localhost:5435/quizly_test";
 
+/* The test database, or a sibling of it for a test file that must not share
+ * one: node --test runs the files side by side. */
+export function databaseUrl(suffix = "") {
+  const url = new URL(process.env.TEST_DATABASE_URL || DEFAULT_URL);
+  if (suffix) url.pathname = `${url.pathname}_${suffix}`;
+  return url.toString();
+}
+
 export async function startTestApp({ leadInMs = 0 } = {}) {
-  const url = process.env.TEST_DATABASE_URL || DEFAULT_URL;
+  const url = databaseUrl();
   await resetDatabase(url);
   const pool = createPool(url);
   await migrate(pool);
+  await pool.end();
+  return startInstance(url, { leadInMs });
+}
+
+/* One instance of the app on a database that is already set up — a second
+ * one stands for another Vercel instance. listen: false is an instance that
+ * cannot hear announcements (a pooled URL only); liveTickMs and quietLookMs
+ * are how often its feeds look for changes without one. */
+export async function startInstance(url, { leadInMs = 0, listen = true, listenUrl, liveTickMs, quietLookMs } = {}) {
+  const pool = createPool(url);
   const quizzes = createQuizzes(pool);
   const config = {
     publicUrl: "", trustProxy: false, port: 0,
@@ -32,7 +50,7 @@ export async function startTestApp({ leadInMs = 0 } = {}) {
   };
   const context = {
     config, pool, quizzes,
-    play: createPlay({ pool, quizzes, maxPlayers: 300, leadInMs }),
+    play: createPlay({ pool, quizzes, maxPlayers: 300, leadInMs, listenUrl: listen ? listenUrl ?? url : "", liveTickMs, quietLookMs }),
     results: createResults(pool),
     auth: createAuth({ password: PASSWORD, secret: config.sessionSecret })
   };
@@ -43,11 +61,13 @@ export async function startTestApp({ leadInMs = 0 } = {}) {
 
   return {
     base,
+    url,
     context,
     sample: () => JSON.parse(readFileSync(path.join(ROOT, "data", "questions.json"), "utf8")),
     async close() {
       server.closeAllConnections();
       await new Promise(resolve => server.close(resolve));
+      await context.play.close();
       await pool.end();
     }
   };
@@ -74,7 +94,7 @@ export function client(base) {
   };
 }
 
-async function resetDatabase(url) {
+export async function resetDatabase(url) {
   const target = new URL(url);
   if (!["localhost", "127.0.0.1", "::1"].includes(target.hostname) && process.env.ALLOW_TEST_DB_RESET !== "1") {
     throw new Error(`refusing to reset ${target.hostname}: tests drop the schema. Set ALLOW_TEST_DB_RESET=1 if you mean it.`);

@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { PASSWORD, client, startTestApp } from "./helpers.js";
+import { PASSWORD, client, startInstance, startTestApp } from "./helpers.js";
 
 let app;
 let admin;
@@ -310,6 +310,106 @@ test("a live stream sends every change of the game as it happens", async () => {
   assert.equal(s.phase, "reveal");
   stream.close();
   await admin("POST", `/api/host/games/${pin}/end`);
+});
+
+test("phones are sent the shared state without the names only the big screens show", async () => {
+  const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
+  const p = (await anon("POST", `/api/games/${pin}/players`, { nickname: "Pocket" })).data;
+  const big = states(await fetch(`${app.base}/api/games/${pin}/live`));
+  const phone = states(await fetch(`${app.base}/api/games/${pin}/live?phone=1`));
+  let s = await big.next();
+  let m = await phone.next();
+  assert.deepEqual(s.roster.map(x => x.nickname), ["Pocket"]);
+  assert.equal(m.roster, undefined, "no roster for a phone");
+  assert.equal(m.players, 1, "but the count");
+  assert.equal((await anon("GET", `/api/games/${pin}?phone=1`)).data.roster, undefined);
+  assert.equal((await anon("GET", `/api/games/${pin}`)).data.roster.length, 1);
+
+  await admin("POST", `/api/host/games/${pin}/next`, { from: { phase: "lobby", index: -1 } });
+  s = await big.next();
+  m = await phone.next();
+  assert.equal(m.phase, "question");
+  assert.deepEqual(m.question, s.question, "the same question on every screen");
+  await anon("POST", `/api/games/${pin}/answers`, { playerId: p.playerId, index: 0, choice: 0, elapsedMs: 800 }, bearer(p.token));
+  do s = await big.next(); while (s.phase !== "reveal");
+  do m = await phone.next(); while (m.phase !== "reveal");
+  assert.equal(s.leaderboard.length, 1);
+  assert.equal(m.leaderboard, undefined, "no leaderboard for a phone");
+  assert.equal(m.reveal.answered, 1, "but the reveal");
+  assert.equal(typeof m.reveal.answer, "number");
+  big.close();
+  phone.close();
+  await admin("POST", `/api/host/games/${pin}/end`);
+});
+
+test("a change on one instance reaches the screens on another at once", async () => {
+  // Instance B hears of changes only when instance A announces them: without
+  // an announcement its feeds would look once a minute.
+  const b = await startInstance(app.url, { liveTickMs: 60_000, quietLookMs: 60_000 });
+  try {
+    const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
+    const stream = states(await fetch(`${b.base}/api/games/${pin}/live`));
+    assert.equal((await stream.next()).players, 0);
+
+    let asked = Date.now();
+    await anon("POST", `/api/games/${pin}/players`, { nickname: "Far away" });
+    let s = await stream.next(2000);
+    assert.equal(s.players, 1);
+    assert.ok(Date.now() - asked < 1000, `a join on A reaches B at once (${Date.now() - asked} ms)`);
+
+    asked = Date.now();
+    await admin("POST", `/api/host/games/${pin}/next`, { from: { phase: "lobby", index: -1 } });
+    s = await stream.next(2000);
+    assert.equal(s.phase, "question");
+    assert.ok(Date.now() - asked < 500, `a new screen on A reaches B at once (${Date.now() - asked} ms)`);
+
+    // Nobody answers and nothing polls: B's feed closes the question when its clock runs out.
+    s = await stream.next(s.question.deadline - Date.now() + 3000);
+    assert.equal(s.phase, "reveal");
+    stream.close();
+    await admin("POST", `/api/host/games/${pin}/end`);
+  } finally {
+    await b.close();
+  }
+});
+
+test("an instance that cannot hear announcements still follows the game", async () => {
+  const c = await startInstance(app.url, { listen: false });   // a pooled URL only: it looks four times a second
+  try {
+    const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
+    const stream = states(await fetch(`${c.base}/api/games/${pin}/live`));
+    assert.equal((await stream.next()).players, 0);
+    const asked = Date.now();
+    await anon("POST", `/api/games/${pin}/players`, { nickname: "Pooled" });
+    assert.equal((await stream.next(2000)).players, 1);
+    assert.ok(Date.now() - asked < 1000, `seen within a second (${Date.now() - asked} ms)`);
+    stream.close();
+    await admin("POST", `/api/host/games/${pin}/end`);
+  } finally {
+    await c.close();
+  }
+});
+
+test("an instance whose LISTEN hears nothing finds out, and looks four times a second", async () => {
+  // Its LISTEN is on another database, as behind a pooler that swallows notifications:
+  // it is accepted, and hears nothing. Believing it would leave this instance a minute behind.
+  const listenElsewhere = new URL(app.url);
+  listenElsewhere.pathname = "/postgres";
+  const d = await startInstance(app.url, { listenUrl: listenElsewhere.toString(), quietLookMs: 60_000 });
+  try {
+    const pin = (await admin("POST", "/api/host/games", { quizId })).data.pin;
+    const stream = states(await fetch(`${d.base}/api/games/${pin}/live`));
+    assert.equal((await stream.next()).players, 0);
+    await pause(3500);   // past the check that finds the LISTEN deaf
+    const asked = Date.now();
+    await anon("POST", `/api/games/${pin}/players`, { nickname: "Behind a pooler" });
+    assert.equal((await stream.next(2000)).players, 1);
+    assert.ok(Date.now() - asked < 1000, `seen within a second (${Date.now() - asked} ms)`);
+    stream.close();
+    await admin("POST", `/api/host/games/${pin}/end`);
+  } finally {
+    await d.close();
+  }
 });
 
 test("the host can remove a player, and an empty lobby can be closed", async () => {

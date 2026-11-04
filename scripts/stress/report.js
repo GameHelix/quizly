@@ -107,7 +107,8 @@ export function format(r) {
   if (r.serverErrors?.length) line(`server log: ${r.serverErrors.slice(0, 4).map(([k, v]) => `${k} ×${n(v)}`).join(" · ")}`);
   if (r.storm?.at) {
     line(`storm at ${new Date(r.storm.at).toISOString().slice(11, 19)}` +
-      (r.storm.upAgainAfterMs ? ` · servers down after ${(r.storm.downAfterMs / 1000).toFixed(1)} s, up again after ${(r.storm.upAgainAfterMs / 1000).toFixed(1)} s` : ""));
+      (r.storm.upAgainAfterMs ? ` · servers down after ${(r.storm.downAfterMs / 1000).toFixed(1)} s, up again after ${(r.storm.upAgainAfterMs / 1000).toFixed(1)} s` : "") +
+      (r.storm.reloadedAfterMs ? ` · new workers serving after ${(r.storm.reloadedAfterMs / 1000).toFixed(1)} s` : ""));
   }
   const g = r.generator;
   line(`phone processes: ${g.length} · CPU max ${n(Math.max(0, ...g.map(x => x.cpu)))}% of a core · event-loop delay p99 max ${n(Math.max(0, ...g.map(x => x.loopP99)))} ms` +

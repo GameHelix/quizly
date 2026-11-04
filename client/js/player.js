@@ -159,6 +159,7 @@ function follow() {
     }
     render();
   }, {
+    query: "phone=1",   // the shared state without the roster and the leaderboard, which a phone does not show
     onError: err => {
       if (err.status === 404) ended("This game has ended.");
     }

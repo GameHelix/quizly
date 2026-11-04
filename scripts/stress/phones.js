@@ -98,9 +98,10 @@ function makeClock() {
   };
 }
 
-function screen(game, { ip, mobile = false, slow = false, onState }) {
+function screen(game, { ip, mobile = false, slow = false, phone = false, onState }) {
   return {
-    game, ip, mobile, slow, onState,
+    game, ip, mobile, slow, phone, onState,
+    query: phone ? "?phone=1" : "",   // client/js/player.js asks for the state without the names
     base: cfg.route === "sticky" ? pick(mobile ? cfg.mobileBases : cfg.bases) : undefined,
     clock: makeClock(),
     stream: null,
@@ -132,7 +133,7 @@ async function follow(s) {
     expect(QUIET_MS);
     count("streams opened");
     try {
-      const res = await fetch(`${base(s)}/api/games/${s.game.pin}/live`, {
+      const res = await fetch(`${base(s)}/api/games/${s.game.pin}/live${s.query}`, {
         headers: s.ip ? { "x-forwarded-for": s.ip } : {},
         signal: ctl.signal
       });
@@ -188,7 +189,7 @@ async function follow(s) {
     failures += 1;
     const state = await getState(s);
     if (state) deliver(s, state, true, Date.now());
-    await pause(Math.min(2000, 500 * failures));
+    await pause(Math.min(2000, 500 * failures) * (0.5 + Math.random()));
   }
   screens.delete(s);
 }
@@ -205,7 +206,7 @@ async function poll(s) {
 }
 
 async function getState(s) {
-  const r = await call("poll", "GET", `${base(s)}/api/games/${s.game.pin}`, { ip: s.ip });
+  const r = await call("poll", "GET", `${base(s)}/api/games/${s.game.pin}${s.query}`, { ip: s.ip });
   if (r.status === 200) return r.data;
   if (r.status === 404) s.done = true;
   return null;
@@ -217,6 +218,7 @@ async function away(s) {
   await pause(s.awayUntil - Date.now());
   s.awayUntil = 0;
   if (s.reload) s.key = "";
+  if (s.stormAt) s.stormAt = Date.now();   // a storm while the screen was locked: its person sees it only from now
 }
 
 function deliver(s, state, fresh, at) {
@@ -234,6 +236,7 @@ function makePhone(g, i) {
     ip: cfg.ips === "shared" ? SHARED_IP : `10.${g.slot % 256}.${Math.floor(i / 256)}.${i % 256}`,
     mobile: Math.random() < cfg.mobile,
     slow: Math.random() < cfg.slow,
+    phone: true,
     onState: (state, info) => phoneState(p, state, info)
   });
   return Object.assign(p, {

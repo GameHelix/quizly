@@ -109,6 +109,7 @@ export async function runScenario(o) {
       processes: workers.length,
       ...merge(results),
       servers: local ? summarizeServers(samplers[0].series) : null,
+      serverSeries: local ? samplers[0].series : null,   // every second's CPU and memory, for --json
       database: local ? summarizeDatabase(samplers[1].series, samplers[2].series) : null,
       serverErrors: [...servers.flatMap(s => [...s.errors]).reduce((all, [k, n]) => all.set(k, (all.get(k) ?? 0) + n), new Map())]
         .sort((a, b) => b[1] - a[1]),
@@ -117,17 +118,40 @@ export async function runScenario(o) {
   } finally {
     for (const s of samplers) await s.stop();
     for (const c of children) c.kill("SIGKILL");
-    for (const s of servers) s.child.kill("SIGKILL");
+    // A CPU profile is written as a process exits on its own: stop those servers as a deploy would.
+    await Promise.all(servers.map(s => (o.profile ? stopped(s.child) : s.child.kill("SIGKILL"))));
   }
+}
+
+function stopped(child) {
+  if (child.exitCode !== null) return;
+  return new Promise(resolve => {
+    const kill = setTimeout(() => child.kill("SIGKILL"), 15_000);
+    child.once("exit", () => {
+      clearTimeout(kill);
+      resolve();
+    });
+    child.kill("SIGTERM");
+  });
 }
 
 /* ---------- the storm ---------- */
 
 /* "drop": every stream is cut at once, as when the venue's Wi-Fi blinks.
- * "restart": every instance is stopped as a deploy stops it, and started again. */
+ * "restart": every instance is stopped as a deploy stops it, and started again.
+ * "reload": every instance is sent SIGHUP, which starts a new worker on the
+ * code and retires the old one only once the new one is serving (server/index.js). */
 async function storm(o, workers, servers, info) {
   info.at = Date.now();
   for (const w of workers) w.send({ type: "storm", at: info.at });
+  if (o.storm === "reload") {
+    await Promise.all(servers.map(s => new Promise(resolve => {
+      s.waiting.push(resolve);
+      s.child.kill("SIGHUP");
+    })));
+    info.reloadedAfterMs = Date.now() - info.at;
+    return;
+  }
   if (o.storm !== "restart") return;
   await Promise.all(servers.map(async s => {
     const exited = new Promise(resolve => s.child.once("exit", resolve));
@@ -178,7 +202,7 @@ export async function prepareDatabase(url) {
  * --pool says otherwise, and production's 100 players a game unless the
  * scenario fills bigger ones — with nothing from .env: it can only reach the
  * stress database. */
-function startServer(port, { pool, players }) {
+function startServer(port, { pool, players, profile }) {
   const env = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
@@ -192,8 +216,9 @@ function startServer(port, { pool, players }) {
     MAX_PLAYERS: String(Math.max(100, players))
   };
   if (pool) env.PG_POOL_MAX = String(pool);
-  const child = spawn(process.execPath, [path.join(ROOT, "server", "index.js")], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
-  const s = { port, child, errors: new Map() };
+  const flags = profile ? ["--cpu-prof", `--cpu-prof-dir=${path.resolve(profile)}`] : [];
+  const child = spawn(process.execPath, [...flags, path.join(ROOT, "server", "index.js")], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
+  const s = { port, child, errors: new Map(), waiting: [] };   // waiting: called when a (new) worker is serving
   return new Promise((resolve, reject) => {
     const lines = stream => {
       let rest = "";
@@ -202,7 +227,10 @@ function startServer(port, { pool, players }) {
         const all = rest.split("\n");
         rest = all.pop();
         for (const line of all) {
-          if (line.includes(" quizly is running")) resolve(s);
+          if (line.includes(" quizly is running")) {
+            resolve(s);
+            for (const done of s.waiting.splice(0)) done();
+          }
           const error = errorKey(line);
           if (error) s.errors.set(error, (s.errors.get(error) ?? 0) + 1);
         }
@@ -267,23 +295,31 @@ async function findQuiz(url, password) {
 
 /* ---------- watching ---------- */
 
-/* CPU and memory of every instance, once a second, from the CPU time it has used. */
+/* CPU and memory of every instance — its supervisor and its workers
+ * together — once a second, from the CPU time each process has used. */
 function sampleServers(servers) {
   const series = [];
   const last = new Map();
   const timer = setInterval(async () => {
-    const pids = servers.map(s => s.child.pid).filter(Boolean);
     try {
-      const { stdout } = await exec("ps", ["-o", "pid=,time=,rss=", "-p", pids.join(",")]);
+      const { stdout } = await exec("ps", ["-A", "-o", "pid=,ppid=,time=,rss="]);
       const t = Date.now();
+      const sums = new Map();   // instance → { cpu, rssMb }
       for (const line of stdout.trim().split("\n")) {
-        const [pid, time, rss] = line.trim().split(/\s+/);
+        const [pid, ppid, time, rss] = line.trim().split(/\s+/);
+        const instance = servers.findIndex(s => String(s.child.pid) === pid || String(s.child.pid) === ppid);
+        if (instance < 0) continue;
         const cpuMs = time.split(":").map(Number).reduce((acc, v) => acc * 60 + v, 0) * 1000;
-        const instance = servers.findIndex(s => String(s.child.pid) === pid);
         const prev = last.get(pid);
-        if (prev && instance >= 0) series.push({ instance, t, cpu: ((cpuMs - prev.cpuMs) / (t - prev.t)) * 100, rssMb: Number(rss) / 1024 });
         last.set(pid, { cpuMs, t });
+        const sum = sums.get(instance) ?? sums.set(instance, { cpu: 0, rssMb: 0, measured: false }).get(instance);
+        sum.rssMb += Number(rss) / 1024;
+        if (prev) {
+          sum.cpu += ((cpuMs - prev.cpuMs) / (t - prev.t)) * 100;
+          sum.measured = true;
+        }
       }
+      for (const [instance, { cpu, rssMb, measured }] of sums) if (measured) series.push({ instance, t, cpu, rssMb });
     } catch {}
   }, 1000);
   return { series, stop: () => clearInterval(timer) };

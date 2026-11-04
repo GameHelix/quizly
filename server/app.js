@@ -16,7 +16,7 @@ import { ROOT } from "./config.js";
 import { createPool } from "./db.js";
 import { GameError, UserError, log } from "./errors.js";
 import { isSameOrigin, joinBase } from "./net.js";
-import { createPlay, shown } from "./play.js";
+import { createPlay, shown, toJson } from "./play.js";
 import { createQuizzes } from "./quizzes.js";
 import { createResults } from "./results.js";
 
@@ -37,16 +37,33 @@ export function createContext(config) {
     quizzes,
     play,
     results: createResults(pool),
-    auth: createAuth({ password: config.adminPassword, secret: config.sessionSecret })
+    auth: createAuth({ password: config.adminPassword, secret: config.sessionSecret }),
+    stopping: false,   // set by a server that is shutting down (server/index.js)
+    async close() {
+      await play.close();
+      await Promise.all([pool.end(), feedPool.end()]);
+    }
   };
 }
 
-export function createApp({ config, pool, quizzes, play, results, auth }) {
+export function createApp(context) {
+  const { config, pool, quizzes, play, results, auth } = context;
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", config.trustProxy);
   app.set("json escape", true);
   app.use(securityHeaders);
+  // A server on its way out says "Connection: close" on every answer it
+  // sends from then on, even to a request that came in before, so the next
+  // request opens a connection to whichever server takes its place.
+  app.use((req, res, next) => {
+    const writeHead = res.writeHead;
+    res.writeHead = function (...args) {
+      if (context.stopping && !res.headersSent) res.setHeader("Connection", "close");
+      return writeHead.apply(this, args);
+    };
+    next();
+  });
 
   const api = express.Router();
   api.use(express.json({ limit: "512kb" }));
@@ -122,6 +139,14 @@ export function createApp({ config, pool, quizzes, play, results, auth }) {
     const close = () => {
       if (!res.writableEnded) res.end();
     };
+    if (context.stopping) {
+      // A stream that reached a server on its way out, on a connection it had
+      // open: the state as it is now, then "Connection: close", and the screen
+      // opens its next stream on a new connection, to the server taking over.
+      const view = await play.publicState(req.params.pin);
+      if (view) write(`data: ${toJson(shown(view, phone))}\n\n`);
+      return close();
+    }
     const stop = play.watch(req.params.pin, json => (json ? write(`data: ${json}\n\n`) : close()), { phone });
     const ping = setInterval(() => write(": ping\n\n"), PING_MS);
     const done = setTimeout(close, STREAM_MS);

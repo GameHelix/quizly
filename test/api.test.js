@@ -4,6 +4,7 @@
  */
 
 import assert from "node:assert/strict";
+import http from "node:http";
 import { after, before, test } from "node:test";
 import { PASSWORD, client, startInstance, startTestApp } from "./helpers.js";
 
@@ -496,10 +497,38 @@ test("guards: cross-site writes, bad bodies, escaping, and nothing secret in the
 
 test("the phone page's link preview has a full address for its image", async () => {
   // Messaging apps fetch the preview image on their own, so a path alone is no use to them.
-  const page = await fetch(`${app.base}/?pin=123456`);
-  assert.equal(page.status, 200);
-  assert.match(await page.text(), /<meta property="og:image" content="http:\/\/[^"/]+\/og\.png">/);
+  for (const path of ["/?pin=123456", "/index", "/index.html"]) {
+    const page = await fetch(`${app.base}${path}`);
+    assert.equal(page.status, 200, path);
+    assert.match(await page.text(), /<meta property="og:image" content="http:\/\/[^"/]+\/og\.png">/, path);
+  }
   assert.equal((await fetch(`${app.base}/og.png`)).status, 200);
+
+  // The address comes from the request's Host: whatever is in it stays inside the attribute.
+  const port = new URL(app.base).port;
+  for (const host of ['evil.example"data-x="1', "x$'y", "a%22b"]) {
+    const html = await new Promise((resolve, reject) => {
+      http.get({ host: "127.0.0.1", port, path: "/", headers: { host } }, res => {
+        let body = "";
+        res.on("data", d => { body += d; });
+        res.on("end", () => resolve(body));
+      }).on("error", reject);
+    });
+    const meta = html.match(/<meta property="og:image"[^>]*>/)?.[0];
+    assert.match(meta, /^<meta property="og:image" content="[^"<>]*">$/, `Host ${host} → ${meta}`);
+    assert.ok(html.length < 3000, "nothing of the page pasted into it");
+  }
+});
+
+test("/host/, /admin/ and /board/ are the pages without the slash", async () => {
+  const r = await fetch(`${app.base}/host/?x=1`, { redirect: "manual" });
+  assert.equal(r.status, 301);
+  assert.equal(r.headers.get("location"), "/host?x=1");
+  for (const page of ["/host", "/admin", "/board"]) {
+    const plain = await fetch(`${app.base}${page}`, { redirect: "manual" });
+    assert.equal(plain.status, 200, `${page} is served as it is`);
+    assert.match(await plain.text(), /<!doctype html>/i);
+  }
 });
 
 test("rate limits: PIN guessing and password guessing", async () => {

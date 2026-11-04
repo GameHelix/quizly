@@ -4,6 +4,10 @@
 #   ADMIN_PASSWORD=… SESSION_SECRET=… docker compose --profile app up -d --build
 #                                        the whole thing, on http://localhost:3000
 #
+# Phones on the Wi-Fi: open the host screen at this machine's network address, or set
+# PUBLIC_URL to it. Compose reads .env here too, and treats a `$` in it as a variable:
+# write `$$` for a dollar sign.
+#
 # The port avoids the other PRE stacks on this machine (5432 pre-ai, 5433 registra, 5434 relay).
 name: quizly
 
@@ -23,6 +27,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped   # back with the app after Docker or the machine restarts
 
   app:
     profiles: ["app"]
@@ -39,6 +44,7 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       TRUST_PROXY: ${TRUST_PROXY:-}
       PG_POOL_MAX: ${PG_POOL_MAX:-}
+      MAX_PLAYERS: ${MAX_PLAYERS:-}
     ports:
       - "3000:3000"
     restart: unless-stopped

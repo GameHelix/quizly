@@ -1,7 +1,7 @@
 /* The live game, kept in Postgres. Every request — a phone polling, a tap,
  * the host pressing Next — reads the game, applies the rules and writes the
  * result back. No process holds state between requests, which is what lets
- * it run on Vercel, where any instance may serve any request.
+ * any number of instances serve one game: any of them may take any request.
  *
  *   lobby → question → reveal → leaderboard → question → … → reveal → final
  *

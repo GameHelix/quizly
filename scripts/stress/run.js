@@ -212,7 +212,7 @@ function startServer(port, { pool, players, profile }) {
     DATABASE_URL: STRESS_DB,
     ADMIN_PASSWORD: PASSWORD,
     SESSION_SECRET: SECRET,
-    TRUST_PROXY: "1",   // as on Vercel: a phone's address is the one X-Forwarded-For names
+    TRUST_PROXY: "1",   // as behind a proxy: a phone's address is the one X-Forwarded-For names
     MAX_PLAYERS: String(Math.max(100, players))
   };
   if (pool) env.PG_POOL_MAX = String(pool);

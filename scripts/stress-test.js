@@ -25,7 +25,8 @@
  *   --slow        share of phones that read their stream slowly     (default 0)
  *   --mobile      share of phones on a 4G-like line                 (default 0)
  *   --ips         unique | shared (every phone behind one address)  (default unique)
- *   --storm       none | drop (every stream cut at once) | restart (every instance restarted)
+ *   --storm       none | drop (every stream cut at once) | restart (every instance stopped and started)
+ *                 | reload (every instance sent SIGHUP: a new worker takes over without a gap)
  *   --storm-at    the question the storm hits, from 1               (default 2)
  *   --soak        minutes of games back to back                     (default 0)
  *   --workers     phone processes                                   (default one per 1,250 phones)
@@ -33,6 +34,7 @@
  *                 It plays real games there: delete them in the admin panel afterwards.
  *   --suite       the evaluation, scenario after scenario: all, or a list such as ladder,storms,burst
  *   --json        write the full results to this file
+ *   --profile     write a CPU profile of every server process to this folder (open it in Chrome's DevTools)
  */
 
 import { writeFileSync } from "node:fs";
@@ -62,6 +64,7 @@ const { values: a } = parseArgs({
     password: { type: "string", default: process.env.ADMIN_PASSWORD || "" },
     suite: { type: "string", default: "" },
     json: { type: "string", default: "" },
+    profile: { type: "string", default: "" },
     label: { type: "string", default: "" }
   }
 });
@@ -84,7 +87,8 @@ const base = {
   soak: Number(a.soak),
   workers: Number(a.workers) || 0,
   url: a.url.replace(/\/+$/, ""),
-  password: a.password
+  password: a.password,
+  profile: a.profile
 };
 
 if (base.url && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(base.url) && !a["allow-remote"]) {
@@ -93,10 +97,16 @@ them, may look like an attack to its firewall, and cannot empty its database aft
 what you mean, and start small: production lets one address join at most 300 phones in ten minutes.`);
   process.exit(1);
 }
-if (base.url && ["restart"].includes(base.storm)) {
-  console.error("--storm restart restarts instances on this machine; it cannot restart a remote one");
+if (base.url && ["restart", "reload"].includes(base.storm)) {
+  console.error(`--storm ${base.storm} restarts instances on this machine; it cannot restart a remote one`);
   process.exit(1);
 }
+
+/* Between scenarios on this machine: a closed connection holds its port for
+ * twice the TCP MSL (30 s on macOS), and the next run must not start short
+ * of ports because the last one used tens of thousands. */
+const SETTLE_MS = 35_000;
+const settle = () => (base.url ? null : new Promise(resolve => setTimeout(resolve, SETTLE_MS)));
 
 /* The evaluation. The ladder climbs until a step fails; the scenarios after
  * it run at the largest step that passed, so each one tests its own thing
@@ -114,13 +124,14 @@ const AT_SIZE = [
   { key: "burst", label: "answer burst", answers: "burst" },
   { key: "drop", label: "every stream cut at once", storm: "drop" },
   { key: "restart", label: "server restart mid-game", storm: "restart" },
+  { key: "reload", label: "reload onto new code mid-game", storm: "reload" },
   { key: "mobile", label: "half on 4G, late answers", mobile: 0.5, slow: 0.05, answers: "late" },
   { key: "soak", label: "soak, 10 minutes", soak: 10, questions: 3, scale: 0.4 }
 ];
 const GROUPS = {
   ladder: ["room", "1k", "2.5k", "5k", "10k"],
   limits: ["shared-ip"],
-  storms: ["drop", "restart"],
+  storms: ["drop", "restart", "reload"],
   network: ["mobile"],
   all: [...LADDER, ...AT_SIZE].map(s => s.key)
 };
@@ -143,6 +154,7 @@ async function main() {
       rows.push({ label: step.label, skipped: "a smaller step failed" });
       continue;
     }
+    if (results.length) await settle();
     const r = await runScenario({ ...base, ...step });
     console.log(format(r) + "\n");
     rows.push({ label: step.label, r });
@@ -154,6 +166,7 @@ async function main() {
   const at = largestPassing?.games ?? 10;
   for (const s of AT_SIZE.filter(s => wanted.has(s.key))) {
     const games = s.fixed ? s.games : Math.max(1, Math.round(at * (s.scale ?? 1)));
+    if (results.length) await settle();
     const r = await runScenario({ ...base, ...s, games, label: `${s.label} (${(games * (s.players ?? base.players)).toLocaleString("en-US")} phones)` });
     console.log(format(r) + "\n");
     rows.push({ label: s.label, r });

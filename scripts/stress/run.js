@@ -124,7 +124,7 @@ export async function runScenario(o) {
 }
 
 function stopped(child) {
-  if (child.exitCode !== null) return;
+  if (child.exitCode !== null || child.signalCode !== null) return;
   return new Promise(resolve => {
     const kill = setTimeout(() => child.kill("SIGKILL"), 15_000);
     child.once("exit", () => {

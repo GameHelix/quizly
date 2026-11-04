@@ -12,9 +12,13 @@
  * Postgres takes a lock at commit for every transaction that notifies, so
  * one NOTIFY per answer would queue the whole database behind it.
  *
- * LISTEN needs a session of its own, which Neon's pooler (PgBouncer in
- * transaction mode) cannot give, so it uses the direct URL. Without one, or
- * while that connection is down, the feeds look for changes four times a
+ * LISTEN needs a session of its own, which a pooler such as PgBouncer in
+ * transaction mode cannot give: there it is accepted, and then hears
+ * nothing. So it uses the direct URL, and rather than trust it, each
+ * instance sends itself a NOTIFY the way announcements travel and waits to
+ * hear it — when it starts listening, and every half minute after, which
+ * also finds a connection that died without a word. Until it hears, or
+ * while the connection is down, the feeds look for changes four times a
  * second, as they always did.
  */
 
@@ -23,28 +27,34 @@ import { createClient } from "./db.js";
 import { log } from "./errors.js";
 
 const CHANNEL = "quizly_games";
-const GATHER_MS = 20;        // announcements wait this long for others to share their NOTIFY
-const RETRY_MS = 2000;       // a dropped LISTEN connection is opened again after this
-const LINGER_MS = 15_000;    // kept this long after the last feed stops, as streams are renewed every 25 s
-const MAX_PAYLOAD = 7900;    // Postgres refuses a payload of 8,000 bytes
+const GATHER_MS = 20;            // announcements wait this long for others to share their NOTIFY
+const RETRY_MS = 2000;           // a dropped LISTEN connection is opened again after this
+const DEAF_RETRY_MS = 60_000;    // …and one that heard nothing, after this
+const LINGER_MS = 15_000;        // kept this long after the last feed stops, as streams are renewed every 25 s
+const CHECK_MS = 3000;           // how long a check waits to hear its own NOTIFY
+const HEARTBEAT_MS = 30_000;     // how often a listening connection is checked
+const MAX_PAYLOAD = 7900;        // Postgres refuses a payload of 8,000 bytes
 
-/* onChange(pin, urgent) runs for every change another instance announces,
- * and onChange(null) when changes may have been missed: the moment
- * listening starts again after a gap. */
+/* pool sends the announcements (and the checks); url is the direct
+ * connection that LISTENs. onChange(pin, urgent) runs for every change
+ * another instance announces, and onChange(null) when changes may have been
+ * missed: the moment listening starts again after a gap. */
 export function createChanges({ pool, url, onChange }) {
   const self = randomBytes(6).toString("base64url");   // this process: its own announcements come back to it
-  const usable = canListen(url);
+  const usable = Boolean(url);
   const pending = new Map();   // pin → urgent, waiting to be announced
   let timer = null;
   let wanted = false;          // some feed is open
   let client = null;           // the LISTEN connection, open or opening
-  let ready = false;           // LISTEN is in place
+  let ready = false;           // LISTEN is in place and has been heard through
   let linger = null;
   let retry = null;
-  let failing = false;
+  let beat = null;
+  let check = null;            // { nonce, done } while a check waits
+  let notifyFailing = false;
+  let listenFailing = false;
+  let deafWarned = false;
   let closed = false;
-
-  if (url && !usable) log.warn("live feeds will look for changes four times a second: LISTEN needs DATABASE_URL_UNPOOLED, the direct URL");
 
   function announce(pin, urgent = false) {
     if (!usable || closed) return;
@@ -76,21 +86,44 @@ export function createChanges({ pool, url, onChange }) {
     for (const list of sends) {
       try {
         await pool.query("select pg_notify($1, $2)", [CHANNEL, `${self} ${list}`]);
-        failing = false;
+        notifyFailing = false;
       } catch (err) {
-        if (!failing) log.error("could not announce a change", { err });
-        failing = true;
+        if (!notifyFailing) log.error("could not announce a change", { err });
+        notifyFailing = true;
       }
     }
   }
 
   function receive(payload) {
     const [from, list] = String(payload).split(" ");
-    if (from === self || !list) return;
+    if (!list) return;
+    if (from === self) {
+      if (check && list === `?${check.nonce}`) check.done(true);   // our own check, heard
+      return;
+    }
+    if (list.startsWith("?")) return;   // another instance's check
     for (const item of list.split(",")) {
       const urgent = item.startsWith("!");
       onChange(urgent ? item.slice(1) : item, urgent);
     }
+  }
+
+  /* Sends this instance a NOTIFY through the pool, the way announcements
+   * travel, and resolves true once the LISTEN connection hears it. */
+  function heard() {
+    return new Promise(resolve => {
+      const nonce = randomBytes(4).toString("hex");
+      const timeout = setTimeout(() => check?.done(false), CHECK_MS);
+      check = {
+        nonce,
+        done: ok => {
+          clearTimeout(timeout);
+          check = null;
+          resolve(ok);
+        }
+      };
+      pool.query("select pg_notify($1, $2)", [CHANNEL, `${self} ?${nonce}`]).catch(() => {});   // unsent: the wait runs out
+    });
   }
 
   /* Starts listening when the first feed opens; stops a while after the last one closes. */
@@ -123,28 +156,49 @@ export function createChanges({ pool, url, onChange }) {
       return dropped(c, err);
     }
     if (client !== c) return;   // hung up while connecting
+    if (!(await heard())) {
+      if (client !== c) return;
+      if (!deafWarned) {
+        log.warn("LISTEN hears nothing, so the live feeds look for changes four times a second: " +
+          "DATABASE_URL_UNPOOLED should be a direct connection to the database, not through a pooler");
+      }
+      deafWarned = true;
+      return dropped(c, null, DEAF_RETRY_MS);
+    }
+    if (client !== c) return;
     ready = true;
-    if (failing) log.info("listening for changes again");
-    failing = false;
+    if (listenFailing) log.info("listening for changes again");
+    listenFailing = false;
+    clearInterval(beat);
+    beat = setInterval(() => heartbeat(c), HEARTBEAT_MS);
+    beat.unref?.();
     onChange(null);             // anything may have changed while nobody listened
   }
 
-  function dropped(c, err) {
+  async function heartbeat(c) {
+    if (client !== c || !ready || check) return;
+    if (!(await heard()) && client === c) dropped(c, new Error("missed its own heartbeat NOTIFY"));
+  }
+
+  /* The LISTEN connection failed, or heard nothing (err null): try again
+   * after a while, and look four times a second meanwhile. */
+  function dropped(c, err, wait = RETRY_MS) {
     if (client !== c) return;
     client = null;
     const was = ready;
     ready = false;
+    clearInterval(beat);
     c.removeAllListeners("end");
     c.on("error", () => {});
     c.end().catch(() => {});
-    if (!failing) log.error("the connection that listens for changes failed", { err: err ?? new Error("closed") });
-    failing = true;
+    if (err && !listenFailing) log.error("the connection that listens for changes failed", { err });
+    if (err) listenFailing = true;
     if (was) onChange(null);    // the feeds look four times a second until it is back
     if (wanted && !closed) {
       retry = setTimeout(() => {
         retry = null;
         if (wanted && !client && !closed) connect();
-      }, RETRY_MS);
+      }, wait);
       retry.unref?.();
     }
   }
@@ -153,6 +207,7 @@ export function createChanges({ pool, url, onChange }) {
     const c = client;
     client = null;
     ready = false;
+    clearInterval(beat);
     if (!c) return;
     c.removeAllListeners("end");
     c.on("error", () => {});
@@ -176,15 +231,4 @@ export function createChanges({ pool, url, onChange }) {
       hangUp();
     }
   };
-}
-
-/* Neon's pooled hosts end in -pooler: PgBouncer in transaction mode passes a
- * NOTIFY on, but a LISTEN there hears nothing. */
-function canListen(url) {
-  if (!url) return false;
-  try {
-    return !new URL(url).hostname.includes("-pooler");
-  } catch {
-    return false;
-  }
 }

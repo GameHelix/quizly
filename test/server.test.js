@@ -1,6 +1,7 @@
 /* The standalone server, server/index.js, as `npm start` runs it: a reload
- * onto new code that refuses no one, a crashed worker replaced, and a stop
- * that ends every live stream at once instead of making screens wait.
+ * onto new code that refuses no one, a crashed worker replaced, a stop that
+ * ends every live stream at once instead of making screens wait, and the
+ * signals that arrive twice or too early.
  */
 
 import assert from "node:assert/strict";
@@ -52,19 +53,33 @@ test("a reload hands every screen to a worker on the new code, and refuses no on
 });
 
 test("a worker that crashes is replaced", async () => {
-  const worker = server.pids().at(-1);
-  process.kill(worker, "SIGKILL");
-  await until(() => server.pids().length === 3, 10_000, "no worker was started in its place");
+  const workers = server.pids();
+  process.kill(workers.at(-1), "SIGKILL");
+  await until(() => server.pids().length === workers.length + 1, 10_000, "no worker was started in its place");
   const r = await get("/api/health");
   assert.equal(r.status, 200);
 });
 
-test("stopping ends every live stream at once and exits", async () => {
+test("two reloads close together leave one worker serving, and the supervisor standing", async () => {
+  const workers = server.pids();
+  server.child.kill("SIGHUP");
+  await until(() => server.pids().length === workers.length + 1, 10_000, "the first reload never started a worker");
+  await pause(700);   // the first retired worker is draining, or gone, when the second reload retires it again
+  server.child.kill("SIGHUP");
+  await until(() => server.pids().length === workers.length + 2, 10_000, "the second reload never started a worker");
+  await until(() => server.pids().filter(alive).length === 1, 10_000, "more than one worker kept running");
+  assert.equal(server.child.exitCode, null, "the supervisor is still running");
+  assert.equal((await get("/api/health")).status, 200);
+});
+
+test("stopping ends every live stream at once and exits, even when the stop arrives twice", async () => {
   const stream = await openStream();
   await stream.next();
   const exited = new Promise(resolve => server.child.once("exit", code => resolve(code)));
   const asked = Date.now();
-  server.child.kill("SIGTERM");
+  // One Ctrl-C under npm reaches the supervisor twice: from the terminal and from npm.
+  server.child.kill("SIGINT");
+  server.child.kill("SIGINT");
   await stream.ended(1500);
   assert.ok(Date.now() - asked < 1500, `the stream ended at once (${Date.now() - asked} ms), not after it ran out`);
   const code = await Promise.race([exited, pause(4000).then(() => "still running")]);
@@ -73,15 +88,24 @@ test("stopping ends every live stream at once and exits", async () => {
   assert.ok(!server.pids().some(alive), "no worker was left behind");
 });
 
+test("a server waiting for its database stops when asked", async () => {
+  // Nothing listens on this port: the worker waits for the database, retrying.
+  const waiting = await startServer({ databaseUrl: `postgres://quizly:quizly@127.0.0.1:${await freePort()}/quizly`, ready: / waiting for the database/ });
+  const exited = new Promise(resolve => waiting.child.once("exit", code => resolve(code)));
+  waiting.child.kill("SIGTERM");
+  const code = await Promise.race([exited, pause(4000).then(() => "still running")]);
+  assert.equal(code, 0, "a stop asked while it starts is not lost");
+});
+
 /* ---------- helpers ---------- */
 
-async function startServer() {
+async function startServer({ databaseUrl = url, ready = / quizly is running / } = {}) {
   const port = await freePort();
   const child = spawn(process.execPath, [path.join(ROOT, "server", "index.js")], {
     cwd: ROOT,
     env: {
       PATH: process.env.PATH, HOME: process.env.HOME,
-      PORT: String(port), HOST: "127.0.0.1", DATABASE_URL: url,
+      PORT: String(port), HOST: "127.0.0.1", DATABASE_URL: databaseUrl,
       ADMIN_PASSWORD: PASSWORD, SESSION_SECRET: "y".repeat(64)
     },
     stdio: ["ignore", "pipe", "pipe"]
@@ -90,8 +114,8 @@ async function startServer() {
   child.stdout.on("data", d => { s.log += d; });
   child.stderr.on("data", d => { s.log += d; });
   // The worker of each " quizly is running" line, in order.
-  s.pids = () => [...s.log.matchAll(/ quizly is running .*pid=(\d+)/g)].map(m => Number(m[1]));
-  await until(() => s.pids().length > 0, 15_000, () => `the server did not start:\n${s.log}`);
+  s.pids = () => [...s.log.matchAll(/ quizly is running .*worker=(\d+)/g)].map(m => Number(m[1]));
+  await until(() => ready.test(s.log), 15_000, () => `the server did not start:\n${s.log}`);
   return s;
 }
 

@@ -9,8 +9,8 @@ Built for rooms of fifty or sixty people and tested well past that (see
 [Capacity](#capacity)). Plain HTML, CSS and JavaScript in the browser — no build
 step, no framework — an Express API, and Postgres.
 
-**Live:** https://quizly-lemon-tau.vercel.app — the host screen is at `/host`, the admin
-panel at `/admin`. Vercel project `quizly` in the PRE team; database on Neon.
+It runs as one container next to a Postgres: see [Running it in a container](#running-it-in-a-container).
+The host screen is at `/host`, the admin panel at `/admin`.
 
 ## What is in it
 
@@ -65,8 +65,7 @@ licenses are included in `client/fonts/`.
 ## Layout
 
 ```
-api/index.js          Vercel's entry point: exports the Express app
-server/               the API
+server/               the API, and the static client
   app.js              routes, security headers, error handling
   play.js             the live game: joining, the clock, answers, scoring, the reveal, awards
   changes.js          telling every instance at once that a game changed (Postgres LISTEN/NOTIFY)
@@ -74,48 +73,49 @@ server/               the API
   results.js          past games, standings, CSV
   auth.js             admin sign-in: a signed HttpOnly cookie
   db.js               Postgres pool and migrations
-  migrations/         SQL, applied in order by `npm run build` / `npm run db:migrate`
+  migrations/         SQL, applied in order as the server starts, or by `npm run db:migrate`
   config.js, net.js, errors.js, index.js (the standalone server and its supervisor)
 shared/quiz.js        rules both sides use: validation, scoring, streaks, nicknames
 client/               the browser: four pages, their scripts, the stylesheet, the favicon, the link preview
 data/questions.json   a ready-made AI quiz in the import format — not read at runtime
-scripts/              build, migrate, seed, load-test, abuse-test
-test/                 rules and full-API tests (node --test)
-neon.js               the Neon project's branch policy, applied with `neon deploy`
-vercel.json           build, rewrites, region and security headers for Vercel
+scripts/              migrate, seed, load-test, abuse-test, stress-test
+test/                 rules, full-API and server tests (node --test)
+Dockerfile            the image: the app on port 3000
+docker-compose.yml    Postgres, and with `--profile app` the app on top of it
 assets/               presentation images; not part of the app and not deployed
 ```
 
 ## How it works
 
 Every quiz, game, player and answer lives in Postgres. Nothing is kept in a server's
-memory between requests, which is what lets it run as a Vercel Function: any instance
-can answer any request.
+memory between requests, which is what lets several instances serve one game: any
+instance can answer any request.
 
 Every screen holds one long request open, `/api/games/:pin/live`, and the server sends the
 game's shared state down it the moment anything changes: a join, an answer, the host's
-Next, a clock running out. Each function instance keeps one small feed per game. The
+Next, a clock running out. Each instance keeps one small feed per game. The
 instance that changes a game announces it with a Postgres `NOTIFY`; every instance with a
 feed for that game hears it (`LISTEN`), reads one short row and builds the state again,
 turned into JSON once for all the screens it serves. A feed also wakes when its question's
 clock runs out. So nothing reads a game that has not changed, however many instances
-Vercel runs, and every phone in a room moves within milliseconds of the others. `LISTEN`
-needs the direct database URL, `DATABASE_URL_UNPOOLED`. Each instance checks that it hears
-its own `NOTIFY`, when it starts listening and every half minute after; when it does not —
-a pooler in the way, or a connection that died — it says so in the log and looks four times
-a second instead, as the feeds always did.
+run, and every phone in a room moves within milliseconds of the others. `LISTEN` needs a
+direct connection to the database: behind a pooler such as PgBouncer, give it one in
+`DATABASE_URL_UNPOOLED`. Each instance checks that it hears its own `NOTIFY`, when it starts
+listening and every half minute after; when it does not — a pooler in the way, or a
+connection that died — it says so in the log and looks four times a second instead, as the
+feeds always did.
 
 Phones are sent the state without the roster and the leaderboard, which only the big
 screens show, and hear of new answers and joins (the count they show) at most once a
-second; a new screen reaches them at once. A stream ends after 25 seconds, inside the
-function's 30-second limit, and the screen opens the next at once. A phone fetches its own
+second; a new screen reaches them at once. A stream ends after 25 seconds, well inside any
+proxy's limit on one request, and the screen opens the next at once. A phone fetches its own
 private view (its answer, its result, its rank) only when the game moves to a new screen,
 and the ranking behind it is worked out once per screen and shared by the whole room.
 
 Where a network holds such a response back, the screen **polls** the same state
 (`/api/games/:pin`) about once a second instead. That state is the same for everyone,
-so Vercel's CDN answers most polls from cache (`s-maxage=1`), and each function instance
-also reuses it for half a second.
+so a CDN in front may answer polls from cache for a second (`s-maxage=1`), and each
+instance also reuses it for half a second.
 
 **Timing is fair even though no network is instant.** A question opens with a
 three-second lead-in, and its clock is two absolute timestamps. Every screen corrects for
@@ -131,12 +131,11 @@ it; row locks make sure exactly one request does, and that no answer slips in af
 
 ## Running it locally
 
-Needs Node 22.9 or later, and a Postgres: a Neon branch, or Docker for a local one.
+Needs Node 22.9 or later, and Docker for a local Postgres.
 
 ```
 cp .env.example .env               # then set ADMIN_PASSWORD and SESSION_SECRET
-neon env pull                      # Neon: writes DATABASE_URL and DATABASE_URL_UNPOOLED into .env
-# or: docker compose up -d         # a local Postgres on localhost:5435, as .env.example says
+docker compose up -d               # Postgres on localhost:5435, as .env.example says
 npm install
 npm run db:seed                    # migrates, then imports data/questions.json as "AI Quiz"
 npm run dev                        # http://localhost:3000
@@ -148,48 +147,57 @@ Docker one (`docker compose up -d`) and refuses any other host.
 Open `/host` and sign in with `ADMIN_PASSWORD`. The QR code on a laptop points at the
 laptop's address on the network, so phones on the same Wi-Fi can join — if the network
 allows devices to reach each other, which office and guest networks often do not. For an
-event, deploy it.
+event, run it where phones can reach it.
 
-## Deploying to Vercel with Neon
+## Running it in a container
 
-1. Import the repository in Vercel (framework preset: **Other** — `vercel.json` sets
-   everything else).
-2. Attach the Neon database (Storage → Neon). It sets `DATABASE_URL`, the pooled connection
-   (host ending `-pooler`) that the app uses, and `DATABASE_URL_UNPOOLED`, the direct one that
-   migrations and the live feeds' `LISTEN` use: PgBouncer's transaction pooling cannot hold
-   the session either needs.
-3. Add `ADMIN_PASSWORD` (16+ characters: `openssl rand -base64 24`) and `SESSION_SECRET`
-   (`openssl rand -hex 32`) for Production.
-4. Deploy. The build assembles the static site and applies the migrations.
-5. Import a quiz: Admin → Import & export → *Import as a new quiz* with
-   `data/questions.json`, or run `npm run db:seed` locally with the production
-   `DATABASE_URL`.
+The image holds the whole app; all it needs is a Postgres. On this machine, with the
+compose file's Postgres:
 
-Functions run in `cle1` (Cleveland), next to a Neon database in AWS `us-east-2`: each
-request makes several database round trips, so the function belongs beside the database,
-not beside the audience. If the database is moved, move `regions` in `vercel.json` with it.
+```
+ADMIN_PASSWORD=… SESSION_SECRET=… docker compose --profile app up -d --build
+                                   # http://localhost:3000; the schema is migrated as it starts
+docker compose exec app node scripts/seed.js     # imports data/questions.json as "AI Quiz"
+```
 
-QR codes point at the project's production domain. Set `PUBLIC_URL` to use a custom one.
+Anywhere else — Azure Container Apps, a VM, any Docker host — run the image with:
 
-## Running it on your own server
+| variable | |
+|---|---|
+| `DATABASE_URL` | the Postgres, e.g. Azure Database for PostgreSQL (`?sslmode=require`) |
+| `DATABASE_URL_UNPOOLED` | a direct connection, if `DATABASE_URL` goes through PgBouncer (Azure's listens on 6432) |
+| `ADMIN_PASSWORD` | 16+ characters: `openssl rand -base64 24` |
+| `SESSION_SECRET` | `openssl rand -hex 32` — the same on every instance |
+| `PUBLIC_URL` | the address phones use, e.g. `https://quiz.example.com`: the QR code and the link preview point there |
+| `TRUST_PROXY` | `1` behind a TLS-terminating proxy such as Container Apps' ingress |
 
-`npm start` runs Quizly as one Node process plus Postgres: the API and the client on
-`PORT`. Put it behind a TLS proxy and set `TRUST_PROXY=1` and `PUBLIC_URL`.
+The container listens on port 3000; `GET /api/health` answers once the database does. Any
+number of instances can serve the same games: they tell one another of every change through
+the database. Put the app beside its database: each request makes several round trips to it.
 
-The app runs in a worker under a small supervisor, so it can be updated without a gap. After
-pulling new code, send the supervisor `SIGHUP`: `kill -HUP <pid>`, with the pid the startup log
-names as `supervisor=`, or `systemctl reload quizly` under systemd, with
-`ExecStart=/usr/bin/node server/index.js` (node itself: npm does not pass `SIGHUP` on) and
-`ExecReload=/bin/kill -HUP $MAINPID`. It starts a worker on the new code and `.env`, waits until
-it is taking requests, and only then retires the old one. Screens move over in about a second,
-no request is refused and no answer is lost. A worker that crashes is replaced at once; the
-port refuses connections for the moment that takes. `SIGTERM` or Ctrl-C stops it, ending every
-live stream at once, so screens go straight to the next server instead of waiting. A worker
-that starts before its database is up waits for it, for up to two minutes.
+## Updating and stopping
+
+The container's command, like `npm start`, runs the app in a worker under a small supervisor.
+
+- **Stopping.** `SIGTERM` (Ctrl-C, `docker stop`, or Container Apps retiring an old revision)
+  ends every live stream at once, so screens go straight to the next server instead of
+  waiting, and the process is gone within a second. A worker that crashes is replaced at once;
+  the port refuses connections for the moment that takes. A worker that starts before its
+  database is up waits for it, for up to two minutes.
+- **Updating in place.** On a machine that updates its own code, send the supervisor `SIGHUP`
+  after `git pull`: `kill -HUP <pid>`, with the pid the startup log names as `supervisor=`, or
+  `systemctl reload quizly` under systemd, with `ExecStart=/usr/bin/node server/index.js` (node
+  itself: npm does not pass `SIGHUP` on) and `ExecReload=/bin/kill -HUP $MAINPID`. It starts a
+  worker on the new code and `.env`, waits until it is taking requests, and only then retires
+  the old one. Screens move over in about a second, no request is refused and no answer is
+  lost. A container platform does the same with a new revision: it starts the new container
+  first, then stops the old one with `SIGTERM`.
 
 Each process holds `PG_POOL_MAX` + 3 connections to the database: `PG_POOL_MAX` (default 5)
-for requests, two for the live feeds and one for `LISTEN`. One process serves 5,000 phones as
-it is; for rooms of 10,000, set `PG_POOL_MAX=20` (see [Capacity](#capacity)).
+for requests, two for the live feeds and one for `LISTEN`. The database's `max_connections`
+must cover every instance at once, and two of them side by side while one replaces the
+other. One process serves 5,000 phones as it is; for rooms of 10,000, set `PG_POOL_MAX=20`
+(see [Capacity](#capacity)).
 
 ## Running the session
 
@@ -205,7 +213,6 @@ On the day:
 - Sign in on the presenter's laptop early: the session lasts 12 hours, so nothing in the room
   can lock it out mid-game. Keep a phone hotspot in mind if the venue Wi-Fi struggles —
   phones on mobile data reach the game just as well.
-- Open `/admin` a few minutes early: Neon wakes a sleeping database on the first query.
 - On the presenter's laptop open `/host`, create the game, press `F`.
 - Once everyone is in, press `L` to lock the game so nobody can add made-up players, then
   Start. Click a name in the lobby or on the scoreboard to remove it.
@@ -262,8 +269,8 @@ pushed, no failures and 60/60 answers on every question; in real browsers a phon
 the host's next screen 80–290 ms after the key press, and the reveal 180 ms after the last
 answer.
 
-The same 60-phone game against the live deployment, run from Baku (the function and the
-database sit in Ohio, the CDN edge in Stockholm): 12,216 requests, no failures, 60/60
+The same 60-phone game against the earlier hosted deployment, run from Baku (the app and the
+database sat in Ohio, the CDN edge in Stockholm): 12,216 requests, no failures, 60/60
 answers on every question; polls 71 ms at the median, answers 224 ms (340 ms p99) — the
 distance, not the server. A full game in real browsers (Chromium, and WebKit as on an
 iPhone) ran without a console error, and the abuse suite passed all 34 checks there too. `npm run abuse-test` passes 34 checks: forged and edited cookies,
@@ -296,7 +303,7 @@ Against the code before [#5](https://github.com/PashaRealEstate/quizly/issues/5)
   reads 189,000 rows a second, not 400,000.
 - 10,000 phones: 690 ms, not 2.45 s, and no answer time is charged to anyone (up to 260 ms
   was, and points with it).
-- Four instances behind random routing, as on Vercel: before, at 2,500 phones, they read
+- Four instances behind random routing, as behind a load balancer: before, at 2,500 phones, they read
   the database 2.6 times as hard as one (451,000 rows a second against 172,000), and the
   phones of a room reached a new screen up to 245 ms apart. Now, at 5,000 phones, four read
   1.4 times what one does (269,000 against 189,000), and a room moves within 14 ms.
@@ -346,15 +353,14 @@ Everything here shared one machine, so these numbers are the floor, not the ceil
   successes count, so nobody can use up the room's allowance with requests that fail on purpose.
 - At most `MAX_PLAYERS` (100) per game, and the host can lock a game and remove anyone.
 - CSV exports cannot run as spreadsheet formulas.
-- `.env` and secrets are ignored by git and by Vercel uploads.
+- `.env` and secrets are ignored by git and kept out of the image (`.dockerignore`).
 
 ## Scripts
 
 | | |
 |---|---|
 | `npm run dev` | the app with auto-reload, on `PORT` (3000) |
-| `npm start` | the app, for any Node host that is not Vercel |
-| `npm run build` | assembles `public/` for the CDN and applies migrations (Vercel's build) |
+| `npm start` | the app under its supervisor, as the container runs it |
 | `npm run db:migrate` | applies migrations to `DATABASE_URL` |
 | `npm run db:seed [-- file.json]` | imports a quiz file as a new quiz |
 | `npm test` | rules and API tests against `TEST_DATABASE_URL` (default: the compose Postgres) |

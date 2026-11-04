@@ -1,10 +1,9 @@
 node_modules/
-# Assembled by `npm run build`.
-public/
-# Secrets: the real values live in Vercel and in each developer's own .env.
+# Secrets: the real values live where the app runs and in each developer's own .env.
 .env
 .env.*
 !.env.example
-.vercel/
 .DS_Store
+# Left from when this ran on Vercel and Neon; never to be committed.
+.vercel/
 .neon

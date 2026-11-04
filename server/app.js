@@ -1,6 +1,4 @@
-/* The HTTP API, and in local and standalone runs the static client too. On
- * Vercel the CDN serves the client and every /api/* request is rewritten to
- * api/index.js, which exports this same app.
+/* The HTTP API and the static client, on one port.
  *
  *   /api/games/:pin…    the room: phones, the projector, the leaderboard screen
  *   /api/host/…         running a game (admin cookie)
@@ -8,6 +6,7 @@
  *   /api/auth/…         signing in and out
  */
 
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import QRCode from "qrcode";
@@ -20,11 +19,11 @@ import { createPlay, shown, toJson } from "./play.js";
 import { createQuizzes } from "./quizzes.js";
 import { createResults } from "./results.js";
 
-const STREAM_MS = 25_000;   // a live stream's length: inside the function's 30 s limit on Vercel (vercel.json)
+const STREAM_MS = 25_000;   // a live stream's length: well inside any proxy's limit on one request
 const PING_MS = 10_000;     // a comment this often, so a screen can tell a quiet game from a dead line
 const JOINS_PER_ADDRESS = 3000;   // in ten minutes: thirty full rooms behind one office's address
 
-/* Everything a request needs, built once per process (per warm instance on Vercel). */
+/* Everything a request needs, built once per process. */
 export function createContext(config) {
   const pool = createPool(config.databaseUrl);
   const feedPool = createPool(config.databaseUrl, 2);   // the live feeds' own (play.js)
@@ -297,7 +296,15 @@ export function createApp(context) {
 
   app.use("/api", api);
 
-  /* ---------- the client, when no CDN serves it ---------- */
+  /* ---------- the client ---------- */
+
+  // The phone page's link preview needs its image at a full address
+  // (client/index.html): this server's, as the QR code has it.
+  const playerPage = readFileSync(path.join(ROOT, "client", "index.html"), "utf8");
+  app.get(["/", "/index.html"], (req, res) => {
+    res.set("Cache-Control", "no-cache").type("html")
+      .send(playerPage.replace('content="/og.png"', `content="${joinBase(config, req.headers, req.secure)}/og.png"`));
+  });
 
   const statics = { extensions: ["html"], setHeaders: res => res.set("Cache-Control", "no-cache") };
   app.use("/shared", express.static(path.join(ROOT, "shared"), statics));
@@ -321,7 +328,7 @@ export function createApp(context) {
   return app;
 }
 
-/* The same policy vercel.json gives the static files. */
+/* Every response, page or API: scripts from this app only, no framing. */
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",

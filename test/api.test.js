@@ -494,6 +494,14 @@ test("guards: cross-site writes, bad bodies, escaping, and nothing secret in the
   await admin("POST", `/api/host/games/${pin}/end`);
 });
 
+test("the phone page's link preview has a full address for its image", async () => {
+  // Messaging apps fetch the preview image on their own, so a path alone is no use to them.
+  const page = await fetch(`${app.base}/?pin=123456`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /<meta property="og:image" content="http:\/\/[^"/]+\/og\.png">/);
+  assert.equal((await fetch(`${app.base}/og.png`)).status, 200);
+});
+
 test("rate limits: PIN guessing and password guessing", async () => {
   let blocked = false;
   for (let i = 0; i < 35 && !blocked; i++) {

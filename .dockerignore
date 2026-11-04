@@ -1,0 +1,8 @@
+# The Dockerfile copies what it needs by name; this keeps secrets and bulk out of the build context.
+.env
+.env.*
+.git
+node_modules
+.vercel
+.neon
+.DS_Store

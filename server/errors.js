@@ -38,7 +38,7 @@ const GAME_ERRORS = {
   slow_down: [429, "Too many attempts. Wait a few minutes and try again."]
 };
 
-/* One line per event on stdout, which is what Vercel and any container platform collect. */
+/* One line per event on stdout, which is what any container platform collects. */
 export const log = {
   info: (msg, fields) => write("info", msg, fields),
   warn: (msg, fields) => write("warn", msg, fields),

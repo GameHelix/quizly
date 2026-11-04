@@ -1,4 +1,4 @@
-/* `npm run load-test -- --url https://your-app.vercel.app --players 60`
+/* `npm run load-test -- --url https://quiz.example.com --players 60`
  *
  * Plays one whole game against a running Quizly with simulated phones that
  * behave like people: they join over a few seconds, follow the game over its

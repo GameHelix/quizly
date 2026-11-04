@@ -37,7 +37,7 @@ const hostIp = () => `198.51.100.${cfg.worker + 1}`;
 /* ---------- requests ---------- */
 
 /* Where a screen's next request goes: spread over the instances at random,
- * as Vercel spreads requests, or through the slow line for a phone on one. */
+ * as a load balancer spreads requests, or through the slow line for a phone on one. */
 function base(s) {
   return s?.base ?? pick(s?.mobile ? cfg.mobileBases : cfg.bases);
 }

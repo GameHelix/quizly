@@ -1,10 +1,10 @@
-# Quizly — local Postgres for development and the load tests.
+# Quizly in containers: Postgres, and the app on top of it.
 #
-#   docker compose up -d      Postgres on localhost:5435
-#   npm run dev               the app on the host, against it
+#   docker compose up -d                 Postgres on localhost:5435, for `npm run dev` and the tests
+#   ADMIN_PASSWORD=… SESSION_SECRET=… docker compose --profile app up -d --build
+#                                        the whole thing, on http://localhost:3000
 #
-# Production is Neon, attached through Vercel's storage integration. The port
-# avoids the other PRE stacks on this machine (5432 pre-ai, 5433 registra, 5434 relay).
+# The port avoids the other PRE stacks on this machine (5432 pre-ai, 5433 registra, 5434 relay).
 name: quizly
 
 services:
@@ -23,6 +23,25 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  app:
+    profiles: ["app"]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://quizly:quizly@db:5432/quizly
+      # Required: the app will not start in production without them (see .env.example).
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      PG_POOL_MAX: ${PG_POOL_MAX:-}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
 
 volumes:
   pgdata:

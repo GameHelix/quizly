@@ -52,6 +52,16 @@ export function createApp(context) {
   app.set("trust proxy", config.trustProxy);
   app.set("json escape", true);
   app.use(securityHeaders);
+  // Behind a proxy with TRUST_PROXY unset, every phone looks like the proxy:
+  // one address for every rate limit, and cookies never marked secure. Said once.
+  let proxyNoted = Boolean(config.trustProxy);
+  app.use((req, res, next) => {
+    if (!proxyNoted && (req.headers["x-forwarded-for"] || req.headers["x-forwarded-proto"])) {
+      proxyNoted = true;
+      log.warn("requests come through a proxy (X-Forwarded-For), but TRUST_PROXY is not set: set TRUST_PROXY=1 behind one");
+    }
+    next();
+  });
   // A server on its way out says "Connection: close" on every answer it
   // sends from then on, even to a request that came in before, so the next
   // request opens a connection to whichever server takes its place.
@@ -299,11 +309,20 @@ export function createApp(context) {
   /* ---------- the client ---------- */
 
   // The phone page's link preview needs its image at a full address
-  // (client/index.html): this server's, as the QR code has it.
-  const playerPage = readFileSync(path.join(ROOT, "client", "index.html"), "utf8");
-  app.get(["/", "/index.html"], (req, res) => {
-    res.set("Cache-Control", "no-cache").type("html")
-      .send(playerPage.replace('content="/og.png"', `content="${joinBase(config, req.headers, req.secure)}/og.png"`));
+  // (client/index.html): this server's, as the QR code has it. Read once in
+  // production; under `npm run dev` on every request, so an edit shows at once.
+  const pagePath = path.join(ROOT, "client", "index.html");
+  const playerPage = readFileSync(pagePath, "utf8");
+  app.get(["/", "/index", "/index.html"], (req, res) => {
+    const page = process.env.NODE_ENV === "production" ? playerPage : readFileSync(pagePath, "utf8");
+    const image = escapeAttribute(`${joinBase(config, req.headers, req.secure)}/og.png`);
+    res.set("Cache-Control", "no-cache").type("html").send(page.replace('content="/og.png"', () => `content="${image}"`));
+  });
+
+  // /host/ is the host page, as /host is. (Routes match with or without the slash.)
+  app.get(["/host/", "/admin/", "/board/"], (req, res, next) => {
+    if (!req.path.endsWith("/")) return next();
+    res.redirect(301, req.path.slice(0, -1) + req.url.slice(req.path.length));
   });
 
   const statics = { extensions: ["html"], setHeaders: res => res.set("Cache-Control", "no-cache") };
@@ -326,6 +345,11 @@ export function createApp(context) {
   });
 
   return app;
+}
+
+/* For a value going into an HTML attribute. */
+function escapeAttribute(value) {
+  return String(value).replace(/[&"<>]/g, c => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" })[c]);
 }
 
 /* Every response, page or API: scripts from this app only, no framing. */

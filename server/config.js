@@ -53,7 +53,7 @@ export function loadConfig(env = process.env) {
 }
 
 /* Express's "trust proxy": a hop count, true/false, or a list of addresses.
- * Unset means "decide from the platform". */
+ * Unset means off: set it behind a proxy, and only there. */
 function parseTrustProxy(v) {
   if (!v) return undefined;
   if (/^\d+$/.test(v)) return Number(v);

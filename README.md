@@ -160,16 +160,19 @@ ADMIN_PASSWORD=… SESSION_SECRET=… docker compose --profile app up -d --build
 docker compose exec app node scripts/seed.js     # imports data/questions.json as "AI Quiz"
 ```
 
+For phones on the same Wi-Fi, open the host screen at this machine's network address (or set
+`PUBLIC_URL` to it): inside a container, "localhost" cannot be swapped for it.
+
 Anywhere else — Azure Container Apps, a VM, any Docker host — run the image with:
 
 | variable | |
 |---|---|
-| `DATABASE_URL` | the Postgres, e.g. Azure Database for PostgreSQL (`?sslmode=require`) |
-| `DATABASE_URL_UNPOOLED` | a direct connection, if `DATABASE_URL` goes through PgBouncer (Azure's listens on 6432) |
+| `DATABASE_URL` | the Postgres, e.g. Azure Database for PostgreSQL on its direct port, 5432 (`?sslmode=require`) |
+| `DATABASE_URL_UNPOOLED` | a direct connection, if `DATABASE_URL` goes through PgBouncer (Azure's listens on 6432), which also needs `statement_timeout` in its `ignore_startup_parameters` |
 | `ADMIN_PASSWORD` | 16+ characters: `openssl rand -base64 24` |
 | `SESSION_SECRET` | `openssl rand -hex 32` — the same on every instance |
 | `PUBLIC_URL` | the address phones use, e.g. `https://quiz.example.com`: the QR code and the link preview point there |
-| `TRUST_PROXY` | `1` behind a TLS-terminating proxy such as Container Apps' ingress |
+| `TRUST_PROXY` | `1` behind a TLS-terminating proxy such as Container Apps' ingress, and only there; without it every phone looks like the proxy, and the server says so in its log |
 
 The container listens on port 3000; `GET /api/health` answers once the database does. Any
 number of instances can serve the same games: they tell one another of every change through

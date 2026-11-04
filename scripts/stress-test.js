@@ -8,8 +8,8 @@
  * ten seconds. scripts/load-test.js plays one game; this plays many.
  *
  * Without --url it runs on this machine: Quizly as production runs it (one
- * process per --instances, requests spread over them at random as Vercel
- * spreads them), against a database of its own — quizly_stress in the docker
+ * process per --instances, requests spread over them at random as a load
+ * balancer spreads them), against a database of its own — quizly_stress in the docker
  * compose Postgres (`docker compose up -d`), emptied of games each run — while
  * it watches the servers' CPU and memory and the database's transactions.
  * Everything shares one machine, so its numbers are the floor, not the ceiling.

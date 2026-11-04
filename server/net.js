@@ -8,7 +8,7 @@
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 
-const IN_CONTAINER = existsSync("/.dockerenv");
+export const IN_CONTAINER = existsSync("/.dockerenv") || existsSync("/run/.containerenv");   // Docker, Podman
 
 export function joinBase(config, headers, encrypted) {
   if (config.publicUrl) return config.publicUrl;

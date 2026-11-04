@@ -1,6 +1,5 @@
-/* Postgres through node-postgres. One small pool per process, which on
- * Vercel means per warm function instance. Neon's connection pooler sits
- * in front of the database, so many instances never exhaust it.
+/* Postgres through node-postgres. One small pool per process: a few
+ * instances of the app together stay far below the database's limit.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -33,7 +32,7 @@ export function createClient(connectionString) {
   return new pg.Client({ connectionString: strictTls(connectionString), keepAlive: true, connectionTimeoutMillis: 10_000 });
 }
 
-/* Neon hands out URLs with sslmode=require. node-postgres reads that as
+/* Hosted Postgres hands out URLs with sslmode=require. node-postgres reads that as
  * verify-full today but has announced it will weaken to libpq's meaning
  * (encrypt, don't verify) in v9; asking for verify-full keeps today's check. */
 function strictTls(connectionString) {
@@ -43,7 +42,7 @@ function strictTls(connectionString) {
 }
 
 /* Runs the migrations over a pool of their own on the given URL — the
- * direct one on Neon — and closes it again. */
+ * direct one, when there is a pooler — and closes it again. */
 export async function migrateUrl(connectionString) {
   const pool = createPool(connectionString);
   try {

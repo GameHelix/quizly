@@ -1,6 +1,5 @@
-/* Runs Quizly as one ordinary Node process: the API and the static client
- * on one port. This is `npm run dev` and `npm start`, and the way to run it
- * on any machine that is not Vercel.
+/* Runs Quizly: the API and the static client on one port. This is
+ * `npm run dev`, `npm start` and the container's command (Dockerfile).
  *
  * The app runs in a worker process under a small supervisor (node:cluster),
  * so it can be replaced without a gap: send the supervisor SIGHUP after
@@ -23,7 +22,7 @@ import { parseEnv } from "node:util";
 import { loadConfig } from "./config.js";
 import { migrateUrl } from "./db.js";
 import { log } from "./errors.js";
-import { lanAddress } from "./net.js";
+import { IN_CONTAINER, lanAddress } from "./net.js";
 
 const STOP_MS = 5000;       // a stopping worker waits this long for requests in flight, then goes anyway
 const LINGER_MS = 1000;     // a worker retired by a reload keeps serving this long (see serve)
@@ -189,7 +188,8 @@ async function serve() {
     log.info("quizly is running", {
       host: `http://localhost:${config.port}/host`,
       admin: `http://localhost:${config.port}/admin`,
-      players: `http://${lan ?? "localhost"}:${config.port}`,
+      // Inside a container its own address means nothing to a phone; PUBLIC_URL is the one to set.
+      players: config.publicUrl || `http://${(!IN_CONTAINER && lan) || "localhost"}:${config.port}`,
       supervisor: process.ppid,   // the one to send SIGHUP to
       worker: process.pid
     });

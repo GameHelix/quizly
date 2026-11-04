@@ -38,8 +38,8 @@ export async function startTestApp({ leadInMs = 0 } = {}) {
 }
 
 /* One instance of the app on a database that is already set up — a second
- * one stands for another Vercel instance. listen: false is an instance that
- * cannot hear announcements (a pooled URL only); liveTickMs and quietLookMs
+ * one stands for another instance behind the load balancer. listen: false is
+ * an instance that cannot hear announcements (a pooled URL only); liveTickMs and quietLookMs
  * are how often its feeds look for changes without one. */
 export async function startInstance(url, { leadInMs = 0, listen = true, listenUrl, liveTickMs, quietLookMs } = {}) {
   const pool = createPool(url);

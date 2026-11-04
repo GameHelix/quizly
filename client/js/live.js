@@ -53,7 +53,8 @@ export async function getState(path, { token } = {}) {
   const receivedAt = Date.now();
   if (!res.ok) throw await refusal(res);
   const data = (res.headers.get("content-type") || "").includes("json") ? await res.json() : null;
-  const cached = /HIT|STALE/i.test(res.headers.get("x-vercel-cache") || "") || Number(res.headers.get("age")) > 0;
+  const cached = /HIT|STALE/i.test(res.headers.get("x-cache") || res.headers.get("cf-cache-status") || "") ||
+    Number(res.headers.get("age")) > 0;
   if (!cached) clock.sample(data?.now, sentAt, receivedAt);
   return data;
 }

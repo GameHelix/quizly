@@ -1,9 +1,10 @@
 /* Telling every instance at once that a game changed.
  *
  * Each process keeps a live feed for every game its screens follow
- * (play.js). On Vercel a game's phones are spread over many instances, and
- * each used to read the game four times a second to find out whether
- * anything had changed, so the database worked harder with every instance.
+ * (play.js). With more than one instance behind a load balancer, a game's
+ * phones are spread over all of them, and each used to read the game four
+ * times a second to find out whether anything had changed, so the database
+ * worked harder with every instance.
  * Now the instance that changes a game says so with a Postgres NOTIFY, and
  * every instance with a feed open LISTENs: a change reaches all of them
  * within milliseconds, and nobody reads a game that has not changed.

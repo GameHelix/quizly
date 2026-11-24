@@ -298,8 +298,7 @@ Docker) and one Quizly process, as `npm start` runs it, with 100 phones a game a
 | 5,000 | 70 ms | 31% / 85% | 189,000 | pass |
 | 10,000 | 690 ms | 55% / 110% | 384,000 | over 500 ms (see below) |
 
-Against the code before #5 and
-#6 were fixed, on the same machine:
+Against the earlier code, on the same machine:
 - 2,500 phones: 99% see the next screen within 31 ms, not 275 ms; the database reads 78,000
   rows a second, not 172,000.
 - 5,000 phones: 70 ms, not 390 ms; the server's CPU averages 31%, not 52%; the database
@@ -314,12 +313,12 @@ Against the code before #5 and
   every phone within 1.2 s, not 15 s.
 
 At 5,000 phones, the largest size that passed, these all pass too:
-- four rooms behind one address, as in an office (#3);
+- four rooms behind one address, as in an office;
 - the same load over four instances;
 - an answer burst, with 70% of each room tapping within two seconds;
 - every stream cut at once, with every phone back within 1.2 s;
 - a server restart mid-game: down for 0.7 s, every phone back within 2.6 s, every answer
-  counted (#4);
+  counted;
 - a reload onto new code mid-game: the new worker serving after 0.1 s, every phone back
   within 1.8 s, every answer counted, no server error;
 - half the phones on a 4G-like line, with half of each room answering in the last seconds;
